@@ -1,0 +1,5 @@
+edgartools
+fastapi
+litellm
+python-dotenv
+uvicorn[standard]

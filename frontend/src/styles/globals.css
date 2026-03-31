@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800;
+}
+
+.source-highlight {
+  @apply bg-yellow-100/90 rounded-sm;
+}
