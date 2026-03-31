@@ -20,7 +20,8 @@ type ChatResponse = {
   source_quote?: string;
 };
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+const apiPrefix = "/api/py";
 
 export default function HomePage() {
   const {
@@ -54,7 +55,7 @@ export default function HomePage() {
     let cancelled = false;
     const checkHealth = async () => {
       try {
-        const response = await fetch(`${apiBase}/health`);
+        const response = await fetch(`${apiBase}${apiPrefix}/health`);
         if (!cancelled) {
           setHealthStatus(response.ok ? "online" : "offline");
         }
@@ -73,7 +74,9 @@ export default function HomePage() {
   }, []);
 
   const fetchFiling = async (key: FilingKey) => {
-    const response = await fetch(`${apiBase}/filing?ticker=${key.ticker}&year=${key.year}&form_type=${key.formType}`);
+    const response = await fetch(
+      `${apiBase}${apiPrefix}/filing?ticker=${key.ticker}&year=${key.year}&form_type=${key.formType}`
+    );
     if (!response.ok) {
       throw new Error("Unable to load filing.");
     }
@@ -121,7 +124,7 @@ export default function HomePage() {
     };
     setIsAsking(true);
     try {
-      const response = await fetch(`${apiBase}/chat`, {
+      const response = await fetch(`${apiBase}${apiPrefix}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

@@ -1,11 +1,12 @@
 {
-  "name": "sec-copilot-frontend",
+  "name": "sec-copilot",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"npm run next-dev\" \"npm run fastapi-dev\"",
+    "next-dev": "next dev",
+    "fastapi-dev": "python -m pip install -r requirements.txt && python -m uvicorn api.index:app --reload --host 127.0.0.1 --port 8000",
     "build": "next build",
-    "build:pages": "GITHUB_PAGES=true next build",
     "start": "next start",
     "lint": "next lint"
   },
@@ -20,6 +21,7 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.0.1",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.32",
     "postcss": "^8.5.6",

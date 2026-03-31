@@ -43,7 +43,6 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
     filings = company.get_filings(form=form_type.upper())
     filing = filings.latest()
 
-    # Try to pull from full filing text, fallback to markdown extraction.
     text = ""
     if hasattr(filing, "text"):
         text = filing.text()
