@@ -9,7 +9,7 @@ body,
 }
 
 body {
-  @apply bg-slate-50 text-slate-800;
+  @apply bg-gradient-to-br from-violet-50/40 via-slate-50 to-indigo-50/50 text-slate-800 antialiased;
 }
 
 .source-highlight {
@@ -31,5 +31,5 @@ body {
 }
 
 .filing-html a {
-  @apply text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-slate-900;
+  @apply text-violet-900 underline decoration-violet-300/80 underline-offset-2 transition hover:text-violet-950 hover:decoration-violet-500/80;
 }

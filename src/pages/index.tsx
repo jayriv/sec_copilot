@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { FilingReader } from "@/components/FilingReader";
 import { RecentResearch } from "@/components/RecentResearch";
@@ -48,6 +49,7 @@ export default function HomePage() {
   const [errorScope, setErrorScope] = useState<"ticker" | "chat" | undefined>();
   const [isCachedFiling, setIsCachedFiling] = useState(false);
   const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [chatDocked, setChatDocked] = useState(true);
 
   useEffect(() => {
     setRecents(loadRecents());
@@ -93,10 +95,10 @@ export default function HomePage() {
     setLastTickerAttempt(key);
     try {
       const filingData = await fetchFiling(key);
-      switchTicker(key, filingData.filing_text);
+      switchTicker(key, filingData.filing_text, filingData.filing_html ?? "");
       setIsCachedFiling(Boolean(filingData.cached));
       setSourceQuote(undefined);
-      setSessionSavedMessage(`Session saved for ${filingKey.ticker} ${filingKey.formType} (${filingKey.year}).`);
+      setSessionSavedMessage(`Session saved for ${key.ticker} ${key.formType} (${key.year}).`);
       window.setTimeout(() => setSessionSavedMessage(undefined), 2200);
     } catch (error) {
       setErrorScope("ticker");
@@ -167,22 +169,26 @@ export default function HomePage() {
     await onSubmitChat(lastPrompt);
   };
 
+  const chatOverlayWidth = "min(33.333vw, 26rem)";
+
   return (
-    <main className="mx-auto h-screen max-w-[1400px] px-6 py-5">
-      <header className="mb-5 flex items-center justify-between">
+    <main className="flex h-screen min-h-0 flex-col bg-gradient-to-br from-violet-50/50 via-slate-50 to-indigo-50/40">
+      <header className="z-50 flex shrink-0 items-center justify-between gap-4 border-b border-violet-100/80 bg-white/85 px-5 py-4 shadow-sm shadow-violet-950/5 backdrop-blur-md">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-slate-900">SEC Copilot</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-violet-950">SEC Copilot</h1>
             {isCachedFiling && (
-              <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 ring-1 ring-slate-200">cached</span>
+              <span className="rounded-md bg-violet-50 px-2 py-1 text-xs text-violet-900/80 ring-1 ring-violet-200/80">
+                cached
+              </span>
             )}
             <span
-              className={`rounded px-2 py-1 text-xs ring-1 ${
+              className={`rounded-md px-2 py-1 text-xs ring-1 ${
                 healthStatus === "online"
-                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                  ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
                   : healthStatus === "offline"
-                    ? "bg-rose-50 text-rose-700 ring-rose-200"
-                    : "bg-slate-100 text-slate-600 ring-slate-200"
+                    ? "bg-rose-50 text-rose-800 ring-rose-200"
+                    : "bg-slate-100 text-slate-700 ring-slate-200"
               }`}
               title="Copilot API status (this service loads filings from the SEC EDGAR database)."
             >
@@ -193,46 +199,71 @@ export default function HomePage() {
                   : "checking SEC EDGAR API"}
             </span>
           </div>
-          <p className="text-sm text-slate-500">Session-aware filing research with comparison-ready Q&A.</p>
+          <p className="mt-0.5 text-sm text-slate-600">
+            Session-aware filing research with comparison-ready Q&A.
+          </p>
         </div>
         <TickerSwitcher initial={filingKey} isLoading={isSwitchingTicker} onSwitch={onSwitchTicker} />
       </header>
       {sessionSavedMessage && (
-        <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-emerald-200">
+        <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/95 px-5 py-2 text-sm text-emerald-900">
           {sessionSavedMessage}
         </div>
       )}
       {errorMessage && errorScope === "ticker" && (
-        <div className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">
+        <div className="shrink-0 border-b border-rose-100 bg-rose-50/95 px-5 py-3 text-sm text-rose-900">
           <div>{errorMessage}</div>
-          <button className="mt-2 rounded bg-rose-100 px-2 py-1 text-xs text-rose-700" onClick={onRetryTicker}>
+          <button
+            className="mt-2 rounded-md bg-rose-100 px-3 py-1 text-xs text-rose-900 shadow-sm hover:bg-rose-200/80"
+            onClick={onRetryTicker}
+          >
             Retry ticker load
           </button>
         </div>
       )}
 
-      <section className="grid h-[calc(100%-68px)] grid-cols-12 gap-5">
-        <div className="col-span-7 flex h-full min-h-0 flex-col gap-4">
+      <div className="relative min-h-0 flex-1">
+        <div
+          className="absolute inset-0 flex min-h-0 flex-col gap-3 p-4 transition-[padding-right] duration-300"
+          style={chatDocked ? { paddingRight: `calc(${chatOverlayWidth} + 1rem)` } : {}}
+        >
           <div className="min-h-0 flex-1">
-            <FilingReader
-              text={documentText}
-              html={documentHtml}
-              sourceQuote={sourceQuote}
-              onAskSelection={onAskSelected}
-            />
+            <FilingReader text={documentText} html={documentHtml} sourceQuote={sourceQuote} onAskSelection={onAskSelected} />
           </div>
           <RecentResearch items={recents} onPick={onSwitchTicker} />
         </div>
-        <div className="col-span-5">
-          <ChatPanel
-            messages={messages}
-            isLoading={isAsking}
-            error={errorScope === "chat" ? errorMessage : undefined}
-            onRetry={errorScope === "chat" ? onRetryChat : undefined}
-            onSubmit={onSubmitChat}
-          />
-        </div>
-      </section>
+
+        {chatDocked && (
+          <div
+            className="pointer-events-none absolute bottom-4 right-4 top-4 z-40 flex min-w-[280px] max-w-[calc(100vw-2rem)]"
+            style={{ width: chatOverlayWidth }}
+          >
+            <div className="pointer-events-auto flex min-h-0 flex-1 flex-col">
+              <ChatPanel
+                messages={messages}
+                isLoading={isAsking}
+                error={errorScope === "chat" ? errorMessage : undefined}
+                onRetry={errorScope === "chat" ? onRetryChat : undefined}
+                onSubmit={onSubmitChat}
+                onMinimize={() => setChatDocked(false)}
+                showSparkleBrand
+              />
+            </div>
+          </div>
+        )}
+
+        {!chatDocked && (
+          <button
+            type="button"
+            onClick={() => setChatDocked(true)}
+            className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#36013F] text-white shadow-[0_10px_34px_-6px_rgba(54,1,63,0.55)] ring-2 ring-violet-200/60 transition hover:scale-105 hover:shadow-[0_14px_40px_-6px_rgba(54,1,63,0.65)] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+            aria-label="Open Copilot chat"
+            title="Open chat"
+          >
+            <Sparkles className="h-6 w-6" strokeWidth={2} />
+          </button>
+        )}
+      </div>
     </main>
   );
 }

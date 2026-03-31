@@ -10,18 +10,18 @@ export const RecentResearch = ({ items, onPick }: Props) => {
   const [open, setOpen] = useState(false);
 
   return (
-    <aside className="shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+    <aside className="shrink-0 overflow-hidden rounded-2xl border border-violet-100/80 bg-white/95 shadow-[0_6px_20px_-8px_rgba(54,1,63,0.18)] ring-1 ring-violet-100/60 transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-10px_rgba(54,1,63,0.22)]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-violet-50/60"
       >
-        <span className="text-sm font-semibold text-slate-900">Recent Research</span>
-        <span className="flex items-center gap-2 text-xs text-slate-500">
+        <span className="text-sm font-semibold text-violet-950">Recent Research</span>
+        <span className="flex items-center gap-2 text-xs text-violet-800/70">
           {items.length > 0 && <span className="tabular-nums">{items.length}</span>}
           <svg
-            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`h-4 w-4 shrink-0 text-violet-500/80 transition-transform ${open ? "rotate-180" : ""}`}
             viewBox="0 0 20 20"
             fill="currentColor"
             aria-hidden
@@ -35,18 +35,18 @@ export const RecentResearch = ({ items, onPick }: Props) => {
         </span>
       </button>
       {open && (
-        <div className="border-t border-slate-100 px-4 pb-4 pt-1">
+        <div className="border-t border-violet-100/80 px-4 pb-4 pt-1">
           <div className="max-h-48 space-y-2 overflow-y-auto">
             {items.map((item) => (
               <button
                 key={`${item.ticker}-${item.year}-${item.formType}`}
                 onClick={() => onPick(item)}
-                className="block w-full rounded-md px-2 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                className="block w-full rounded-lg px-2 py-2 text-left text-sm text-slate-700 transition hover:bg-violet-50 hover:text-violet-950"
               >
                 {item.ticker} {item.formType} ({item.year})
               </button>
             ))}
-            {items.length === 0 && <p className="text-xs text-slate-500">No recent filings yet.</p>}
+            {items.length === 0 && <p className="text-xs text-violet-800/60">No recent filings yet.</p>}
           </div>
         </div>
       )}

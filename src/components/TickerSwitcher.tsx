@@ -29,11 +29,11 @@ export const TickerSwitcher = ({ initial, isLoading = false, onSwitch }: Props) 
       <label className="sr-only" htmlFor="ticker-input">
         Ticker
       </label>
-      <div className="flex items-center rounded-lg bg-white px-3 py-2 shadow-sm ring-1 ring-slate-200">
-        <Search size={16} className="mr-2 text-slate-400" />
+      <div className="flex items-center rounded-xl border border-violet-200/70 bg-white px-3 py-2 shadow-[0_4px_16px_-6px_rgba(54,1,63,0.22)] ring-1 ring-violet-100/50 transition hover:shadow-[0_6px_20px_-6px_rgba(54,1,63,0.28)]">
+        <Search size={16} className="mr-2 text-violet-500/70" />
         <input
           id="ticker-input"
-          className="w-24 bg-transparent text-sm outline-none"
+          className="w-24 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
           value={ticker}
           disabled={isLoading}
           onChange={(e) => setTicker(e.target.value)}
@@ -41,14 +41,14 @@ export const TickerSwitcher = ({ initial, isLoading = false, onSwitch }: Props) 
         />
       </div>
       <input
-        className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-200 outline-none"
+        className="rounded-xl border border-violet-200/70 bg-white px-3 py-2 text-sm text-slate-900 shadow-[0_4px_16px_-6px_rgba(54,1,63,0.22)] outline-none ring-1 ring-violet-100/50 transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-300/40 hover:shadow-[0_6px_20px_-6px_rgba(54,1,63,0.28)]"
         value={year}
         disabled={isLoading}
         onChange={(e) => setYear(e.target.value)}
         placeholder="2024"
       />
       <input
-        className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-200 outline-none"
+        className="rounded-xl border border-violet-200/70 bg-white px-3 py-2 text-sm text-slate-900 shadow-[0_4px_16px_-6px_rgba(54,1,63,0.22)] outline-none ring-1 ring-violet-100/50 transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-300/40 hover:shadow-[0_6px_20px_-6px_rgba(54,1,63,0.28)]"
         value={formType}
         disabled={isLoading}
         onChange={(e) => setFormType(e.target.value)}
@@ -56,7 +56,7 @@ export const TickerSwitcher = ({ initial, isLoading = false, onSwitch }: Props) 
       />
       <button
         disabled={isLoading}
-        className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-xl bg-[#36013F] px-4 py-2 text-sm font-medium text-white shadow-[0_6px_18px_-6px_rgba(54,1,63,0.45)] transition hover:bg-violet-900 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? "Loading..." : "Open"}
       </button>

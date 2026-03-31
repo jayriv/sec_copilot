@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { buildFilingAnchors, COPILOT_PURPLE_SHADOW_HOVER, scrollToFilingAnchor } from "@/lib/filingAnchors";
 import { useTextSelection } from "@/hooks/useTextSelection";
 
 type Props = {
@@ -16,26 +17,11 @@ function escapeHtmlText(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-type HtmlAnchor = {
-  id: string;
-  label: string;
-  level: number;
-};
-
-function slugifyHeading(input: string): string {
-  const base = input
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return base || "section";
-}
-
 export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: Props) => {
   const { selection, dismiss } = useTextSelection("filing-reader");
+  const contentRootRef = useRef<HTMLDivElement>(null);
   const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
-  const [anchors, setAnchors] = useState<HtmlAnchor[]>([]);
+  const [anchors, setAnchors] = useState<ReturnType<typeof buildFilingAnchors>>([]);
   const showHtml = Boolean(html?.trim());
 
   useEffect(() => {
@@ -59,37 +45,22 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       const clean = DOMPurify.sanitize(raw, {
         USE_PROFILES: { html: true },
         ADD_TAGS: ["mark"],
-        ADD_ATTR: ["id", "class"],
+        ADD_ATTR: ["id", "class", "name"],
       });
       if (cancelled) return;
 
-      // Add stable ids to headings and collect anchors for quick navigation.
       try {
         const doc = new DOMParser().parseFromString(clean, "text/html");
-        const seen = new Map<string, number>();
-        const nextAnchors: HtmlAnchor[] = [];
-        const headings = Array.from(doc.querySelectorAll("h1,h2,h3,h4,h5,h6"));
-        for (const heading of headings) {
-          const label = (heading.textContent ?? "").replace(/\s+/g, " ").trim();
-          if (!label) continue;
-          const level = Number(heading.tagName.slice(1));
-
-          let id = heading.getAttribute("id")?.trim() || "";
-          if (!id) {
-            const base = slugifyHeading(label);
-            const prior = seen.get(base) ?? 0;
-            seen.set(base, prior + 1);
-            id = prior === 0 ? base : `${base}-${prior + 1}`;
-            heading.setAttribute("id", id);
-          }
-          nextAnchors.push({ id, label, level });
+        const nextAnchors = buildFilingAnchors(doc);
+        if (!cancelled) {
+          setAnchors(nextAnchors);
+          setSanitizedHtml(doc.body.innerHTML);
         }
-
-        setAnchors(nextAnchors.slice(0, 250));
-        setSanitizedHtml(doc.body.innerHTML);
       } catch {
-        setAnchors([]);
-        setSanitizedHtml(clean);
+        if (!cancelled) {
+          setAnchors([]);
+          setSanitizedHtml(clean);
+        }
       }
     })();
     return () => {
@@ -121,18 +92,18 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
   }, [text, sourceQuote]);
 
   return (
-    <section className="relative flex h-full min-h-0 flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <section className="group/filing relative flex h-full min-h-0 flex-col rounded-2xl border border-violet-100/80 bg-white p-5 shadow-[0_6px_20px_-6px_rgba(54,1,63,0.26)] ring-1 ring-slate-200/80 transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_14px_44px_-14px_rgba(54,1,63,0.24)]">
       {showHtml && anchors.length > 0 && (
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <label className="text-xs font-medium text-slate-600">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <label className="text-xs font-medium text-violet-950/80">
             Jump to section
             <select
-              className="ml-2 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
+              className="ml-2 rounded-lg border border-violet-200/90 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-[0_4px_14px_-4px_rgba(54,1,63,0.22)] outline-none transition hover:shadow-[0_6px_18px_-4px_rgba(54,1,63,0.3)] focus:border-violet-400 focus:ring-2 focus:ring-violet-300/50"
               defaultValue=""
               onChange={(e) => {
                 const id = e.target.value;
                 if (!id) return;
-                document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                scrollToFilingAnchor(id, contentRootRef.current ?? document.body);
                 e.currentTarget.value = "";
               }}
             >
@@ -140,7 +111,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
                 Select…
               </option>
               {anchors.map((a) => (
-                <option key={a.id} value={a.id}>
+                <option key={`${a.source}-${a.id}`} value={a.id}>
                   {`${"  ".repeat(Math.max(0, a.level - 1))}${a.label}`}
                 </option>
               ))}
@@ -149,7 +120,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
           {sourceQuote && (
             <button
               type="button"
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-xs font-medium text-violet-950 shadow-[0_4px_12px_-4px_rgba(54,1,63,0.2)] transition hover:bg-violet-50"
               onClick={() => document.getElementById("source-quote-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" })}
             >
               Jump to quote
@@ -163,7 +134,8 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       >
         {showHtml && sanitizedHtml && (
           <div
-            className="filing-html prose prose-slate max-w-none prose-headings:scroll-mt-24 prose-p:my-2 prose-li:my-0.5 prose-table:text-sm"
+            ref={contentRootRef}
+            className="filing-html prose prose-slate max-w-none prose-headings:scroll-mt-24 prose-p:my-2 prose-li:my-0.5 prose-table:text-sm prose-a:text-violet-900 prose-a:decoration-violet-300"
             dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
           />
         )}
@@ -198,14 +170,15 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
             left: `${selection.x}px`,
             top: `${selection.y}px`,
             transform: "translate(-50%, -100%)",
-            zIndex: 50
+            zIndex: 60,
+            boxShadow: COPILOT_PURPLE_SHADOW_HOVER,
           }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             onAskSelection(selection.text);
             dismiss();
           }}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg ring-1 ring-slate-700/20 hover:bg-slate-800"
+          className="rounded-lg bg-[#36013F] px-3 py-1.5 text-xs font-medium text-white ring-1 ring-violet-900/30 transition hover:bg-violet-900"
         >
           Add to AI Chat
         </button>
