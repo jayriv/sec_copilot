@@ -109,6 +109,12 @@ export default function HomePage() {
   const onAskSelected = (text: string) => {
     addHighlight(text);
     setSelectedText(text);
+    addMessage({
+      id: crypto.randomUUID(),
+      role: "user",
+      kind: "selection",
+      content: text
+    });
   };
 
   const onSubmitChat = async (prompt: string) => {
@@ -178,9 +184,13 @@ export default function HomePage() {
                     ? "bg-rose-50 text-rose-700 ring-rose-200"
                     : "bg-slate-100 text-slate-600 ring-slate-200"
               }`}
-              title={`Backend ${healthStatus}`}
+              title="Copilot API status (this service loads filings from the SEC EDGAR database)."
             >
-              {healthStatus === "online" ? "api online" : healthStatus === "offline" ? "api offline" : "checking api"}
+              {healthStatus === "online"
+                ? "SEC EDGAR API online"
+                : healthStatus === "offline"
+                  ? "SEC EDGAR API offline"
+                  : "checking SEC EDGAR API"}
             </span>
           </div>
           <p className="text-sm text-slate-500">Session-aware filing research with comparison-ready Q&A.</p>
@@ -202,19 +212,20 @@ export default function HomePage() {
       )}
 
       <section className="grid h-[calc(100%-68px)] grid-cols-12 gap-5">
-        <div className="col-span-7 flex flex-col gap-4">
+        <div className="col-span-7 flex h-full min-h-0 flex-col gap-4">
+          <div className="min-h-0 flex-1">
+            <FilingReader
+              text={documentText}
+              html={documentHtml}
+              sourceQuote={sourceQuote}
+              onAskSelection={onAskSelected}
+            />
+          </div>
           <RecentResearch items={recents} onPick={onSwitchTicker} />
-          <FilingReader
-            text={documentText}
-            html={documentHtml}
-            sourceQuote={sourceQuote}
-            onAskSelection={onAskSelected}
-          />
         </div>
         <div className="col-span-5">
           <ChatPanel
             messages={messages}
-            selectedText={selectedText}
             isLoading={isAsking}
             error={errorScope === "chat" ? errorMessage : undefined}
             onRetry={errorScope === "chat" ? onRetryChat : undefined}

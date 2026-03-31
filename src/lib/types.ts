@@ -9,6 +9,8 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   sourceQuote?: string;
+  /** User message created from filing selection (styled in thread order). */
+  kind?: "selection" | "chat";
 };
 
 export type Highlight = {

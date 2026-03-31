@@ -17,7 +17,7 @@ function escapeHtmlText(s: string): string {
 }
 
 export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: Props) => {
-  const selection = useTextSelection("filing-reader");
+  const { selection, dismiss } = useTextSelection("filing-reader");
   const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
   const showHtml = Boolean(html?.trim());
 
@@ -74,10 +74,10 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
   }, [text, sourceQuote]);
 
   return (
-    <section className="relative rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+    <section className="relative flex h-full min-h-0 flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
       <div
         id="filing-reader"
-        className="max-h-[70vh] overflow-y-auto text-sm leading-relaxed text-slate-800"
+        className="relative min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed text-slate-800"
       >
         {showHtml && sanitizedHtml && (
           <div
@@ -110,11 +110,22 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       </div>
       {selection.visible && (
         <button
-          style={{ left: selection.x, top: selection.y }}
-          onClick={() => onAskSelection(selection.text)}
-          className="absolute -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-3 py-1 text-xs text-white"
+          type="button"
+          style={{
+            position: "fixed",
+            left: `${selection.x}px`,
+            top: `${selection.y}px`,
+            transform: "translate(-50%, -100%)",
+            zIndex: 50
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onAskSelection(selection.text);
+            dismiss();
+          }}
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg ring-1 ring-slate-700/20 hover:bg-slate-800"
         >
-          Ask AI
+          Add to AI Chat
         </button>
       )}
     </section>

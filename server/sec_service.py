@@ -45,6 +45,29 @@ def ensure_edgar_identity() -> None:
     _EDGAR_CONFIGURED = True
 
 
+def _pick_filing(company: Company, form_type: str, calendar_year: str) -> object:
+    """Choose a filing whose SEC filing_date falls in calendar_year when possible."""
+    filings = company.get_filings(form=form_type.upper())
+    try:
+        y = int(calendar_year)
+    except ValueError:
+        return filings.latest()
+    try:
+        filtered = filings.filter(filing_date=f"{y}-01-01:{y}-12-31")
+        if len(filtered) > 0:
+            return filtered.latest()
+    except Exception:
+        pass
+    try:
+        for candidate in filings.head(120):
+            fd = getattr(candidate, "filing_date", None)
+            if fd is not None and getattr(fd, "year", None) == y:
+                return candidate
+    except Exception:
+        pass
+    return filings.latest()
+
+
 def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
     ensure_edgar_identity()
     cache_key = (ticker.upper(), year, form_type.upper())
@@ -61,8 +84,7 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
         )
 
     company = Company(ticker.upper())
-    filings = company.get_filings(form=form_type.upper())
-    filing = filings.latest()
+    filing = _pick_filing(company, form_type, year)
 
     html_content: str | None = None
     if hasattr(filing, "html"):
@@ -99,51 +121,105 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
     return bundle
 
 
+def _normalize_form_label(form: str) -> str:
+    return form.upper().replace(" ", "").replace("-", "")
+
+
 def _extract_comparison_form(question: str) -> str:
     lowered = question.lower()
     patterns = [
-        r"\b10[\s\-]?k\b",
-        r"\b10[\s\-]?q\b",
-        r"\b8[\s\-]?k\b",
-        r"\b20[\s\-]?f\b",
+        (r"\b10[\s\-]?k\b", "10-K"),
+        (r"\b10[\s\-]?q\b", "10-Q"),
+        (r"\b8[\s\-]?k\b", "8-K"),
+        (r"\b20[\s\-]?f\b", "20-F"),
     ]
-    for pattern in patterns:
-        match = re.search(pattern, lowered)
-        if match:
-            return match.group(0).replace(" ", "").upper()
+    for pattern, canonical in patterns:
+        if re.search(pattern, lowered):
+            return canonical
     return ""
 
 
-def _extract_comparison_year(question: str, default_year: str) -> str:
+def _wants_additional_filing(question: str) -> bool:
+    lowered = question.lower()
+    if re.search(r"\b(19|20)\d{2}\b", lowered):
+        return True
+    if re.search(r"\bhow (does|did|has|have)\b.{0,80}\bcompare\b", lowered):
+        return True
+    phrases = (
+        "compare",
+        "comparison",
+        "versus",
+        " vs ",
+        "relative to",
+        "prior year",
+        "last year",
+        "year-ago",
+        "year ago",
+        "earlier filing",
+        "historical filing",
+        "past filing",
+        "past 10",
+        "earlier 10",
+        "previous 10",
+        "previous filing",
+        "last 10",
+        "year over year",
+        "yoy",
+    )
+    return any(p in lowered for p in phrases)
+
+
+def _extract_comparison_year_smart(question: str, display_year: str, same_form: bool) -> str:
     lowered = question.lower()
     year_match = re.search(r"\b(19|20)\d{2}\b", lowered)
     if year_match:
         return year_match.group(0)
     if "previous year" in lowered or "prior year" in lowered or "last year" in lowered:
         try:
-            return str(int(default_year) - 1)
+            return str(int(display_year) - 1)
         except ValueError:
-            return default_year
-    return default_year
+            return display_year
+    if same_form and any(
+        token in lowered for token in ("previous", "prior", "earlier", "historical", "past", "older")
+    ):
+        try:
+            return str(int(display_year) - 1)
+        except ValueError:
+            return display_year
+    return display_year
 
 
 def maybe_get_comparison_context(question: str, ticker: str, year: str, active_form_type: str) -> str:
-    lowered = question.lower()
-    compare_markers = ["compare", "comparison", "versus", "vs", "relative to", "how does this compare"]
-    if not any(marker in lowered for marker in compare_markers):
+    if not _wants_additional_filing(question):
         return ""
 
-    comparison_form = _extract_comparison_form(question)
-    if not comparison_form:
+    normalized_active = _normalize_form_label(active_form_type)
+    comparison_raw = _extract_comparison_form(question) or active_form_type
+    comparison_form = comparison_raw
+    same_form = _normalize_form_label(comparison_raw) == normalized_active
+
+    comparison_year = _extract_comparison_year_smart(question, year, same_form=same_form)
+
+    try:
+        active_y = int(year)
+        comp_y = int(comparison_year)
+    except ValueError:
         return ""
 
-    normalized_active = active_form_type.upper().replace(" ", "")
-    if comparison_form == normalized_active:
+    if same_form and comp_y >= active_y:
+        comparison_year = str(active_y - 1)
+        try:
+            comp_y = int(comparison_year)
+        except ValueError:
+            return ""
+
+    if same_form and comp_y == active_y:
         return ""
 
-    comparison_year = _extract_comparison_year(question, year)
     try:
         bundle = get_filing_text(ticker=ticker, year=comparison_year, form_type=comparison_form)
     except Exception:
         return ""
-    return f"Comparison context from {comparison_form} ({comparison_year}):\n{bundle.text[:20000]}"
+
+    label = f"Additional SEC filing context ({comparison_form}, filing_date calendar year ~{comparison_year})"
+    return f"{label}:\n{bundle.text[:25000]}"
