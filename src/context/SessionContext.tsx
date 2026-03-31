@@ -2,7 +2,7 @@ import { createContext, ReactNode, useContext, useEffect, useMemo, useState } fr
 import { ChatMessage, FilingKey, Highlight, StoredSession } from "@/lib/types";
 import { loadSession, saveSession } from "@/lib/storage";
 
-const defaultKey: FilingKey = { ticker: "MSFT", year: "2024", formType: "10-K" };
+const defaultKey: FilingKey = { ticker: "CHGG", year: "2026", formType: "10-K" };
 
 type SessionContextValue = {
   filingKey: FilingKey;

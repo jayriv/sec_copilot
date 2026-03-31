@@ -16,14 +16,32 @@ function escapeHtmlText(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+type HtmlAnchor = {
+  id: string;
+  label: string;
+  level: number;
+};
+
+function slugifyHeading(input: string): string {
+  const base = input
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "section";
+}
+
 export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: Props) => {
   const { selection, dismiss } = useTextSelection("filing-reader");
   const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
+  const [anchors, setAnchors] = useState<HtmlAnchor[]>([]);
   const showHtml = Boolean(html?.trim());
 
   useEffect(() => {
     if (!showHtml) {
       setSanitizedHtml(null);
+      setAnchors([]);
       return;
     }
     let cancelled = false;
@@ -43,7 +61,36 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
         ADD_TAGS: ["mark"],
         ADD_ATTR: ["id", "class"],
       });
-      if (!cancelled) setSanitizedHtml(clean);
+      if (cancelled) return;
+
+      // Add stable ids to headings and collect anchors for quick navigation.
+      try {
+        const doc = new DOMParser().parseFromString(clean, "text/html");
+        const seen = new Map<string, number>();
+        const nextAnchors: HtmlAnchor[] = [];
+        const headings = Array.from(doc.querySelectorAll("h1,h2,h3,h4,h5,h6"));
+        for (const heading of headings) {
+          const label = (heading.textContent ?? "").replace(/\s+/g, " ").trim();
+          if (!label) continue;
+          const level = Number(heading.tagName.slice(1));
+
+          let id = heading.getAttribute("id")?.trim() || "";
+          if (!id) {
+            const base = slugifyHeading(label);
+            const prior = seen.get(base) ?? 0;
+            seen.set(base, prior + 1);
+            id = prior === 0 ? base : `${base}-${prior + 1}`;
+            heading.setAttribute("id", id);
+          }
+          nextAnchors.push({ id, label, level });
+        }
+
+        setAnchors(nextAnchors.slice(0, 250));
+        setSanitizedHtml(doc.body.innerHTML);
+      } catch {
+        setAnchors([]);
+        setSanitizedHtml(clean);
+      }
     })();
     return () => {
       cancelled = true;
@@ -75,6 +122,41 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
 
   return (
     <section className="relative flex h-full min-h-0 flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+      {showHtml && anchors.length > 0 && (
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <label className="text-xs font-medium text-slate-600">
+            Jump to section
+            <select
+              className="ml-2 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none"
+              defaultValue=""
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                e.currentTarget.value = "";
+              }}
+            >
+              <option value="" disabled>
+                Select…
+              </option>
+              {anchors.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {`${"  ".repeat(Math.max(0, a.level - 1))}${a.label}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sourceQuote && (
+            <button
+              type="button"
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+              onClick={() => document.getElementById("source-quote-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            >
+              Jump to quote
+            </button>
+          )}
+        </div>
+      )}
       <div
         id="filing-reader"
         className="relative min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed text-slate-800"
