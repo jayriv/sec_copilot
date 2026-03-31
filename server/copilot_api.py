@@ -41,6 +41,7 @@ def filing(ticker: str, year: str, form_type: str) -> FilingResponse:
             year=bundle.year,
             form_type=bundle.form_type,
             filing_text=bundle.text,
+            filing_html=bundle.html,
             cached=bundle.cached,
         )
     except Exception as exc:

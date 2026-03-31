@@ -22,6 +22,8 @@ From the repository root:
 
 API routes live under **`/api/py`** (for example `/api/py/health`).
 
+Filings are returned as **plain text** (for the LLM) and, when available, **HTML** from edgartools for the reader so tables and structure resemble the original filing more closely than raw text extraction.
+
 ## Deploy on Vercel
 
 1. Import this GitHub repo in Vercel (framework: Next.js; root directory: repo root — default).

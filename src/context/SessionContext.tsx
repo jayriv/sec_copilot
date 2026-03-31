@@ -10,22 +10,29 @@ type SessionContextValue = {
   highlights: Highlight[];
   selectedText: string;
   documentText: string;
+  documentHtml: string;
   setSelectedText: (value: string) => void;
   setDocumentText: (value: string) => void;
   addMessage: (message: ChatMessage) => void;
   addHighlight: (text: string) => void;
-  switchTicker: (next: FilingKey, newDocText?: string) => void;
+  switchTicker: (next: FilingKey, newDocText?: string, newDocHtml?: string) => void;
 };
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
-const createEmptySession = (filingKey: FilingKey, documentText = ""): StoredSession => ({
+const createEmptySession = (filingKey: FilingKey, documentText = "", documentHtml = ""): StoredSession => ({
   filingKey,
   messages: [],
   highlights: [],
   documentText,
+  documentHtml,
   selectedText: "",
   updatedAt: Date.now()
+});
+
+const normalizeSession = (raw: StoredSession): StoredSession => ({
+  ...raw,
+  documentHtml: raw.documentHtml ?? ""
 });
 
 export const SessionProvider = ({ children }: { children: ReactNode }) => {
@@ -33,7 +40,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const existing = loadSession(defaultKey);
-    if (existing) setSession(existing);
+    if (existing) setSession(normalizeSession(existing));
   }, []);
 
   const persist = (next: StoredSession) => {
@@ -41,11 +48,20 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     saveSession(next);
   };
 
-  const switchTicker = (nextKey: FilingKey, newDocText = "") => {
+  const switchTicker = (nextKey: FilingKey, newDocText = "", newDocHtml = "") => {
     saveSession({ ...session, updatedAt: Date.now() });
-    const nextSession = loadSession(nextKey) ?? createEmptySession(nextKey, newDocText);
-    // Reset selected context when active ticker changes.
-    persist({ ...nextSession, selectedText: "", updatedAt: Date.now() });
+    const loaded = loadSession(nextKey);
+    const base = loaded ? normalizeSession(loaded) : createEmptySession(nextKey, "", "");
+    const nextSession: StoredSession = {
+      ...base,
+      filingKey: nextKey,
+      ...(newDocText
+        ? { documentText: newDocText, documentHtml: newDocHtml }
+        : {}),
+      selectedText: "",
+      updatedAt: Date.now()
+    };
+    persist(nextSession);
   };
 
   const value = useMemo<SessionContextValue>(
@@ -55,6 +71,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       highlights: session.highlights,
       selectedText: session.selectedText,
       documentText: session.documentText,
+      documentHtml: session.documentHtml ?? "",
       setSelectedText: (selectedText) => persist({ ...session, selectedText, updatedAt: Date.now() }),
       setDocumentText: (documentText) => persist({ ...session, documentText, updatedAt: Date.now() }),
       addMessage: (message) =>

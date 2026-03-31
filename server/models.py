@@ -18,6 +18,7 @@ class FilingResponse(BaseModel):
     year: str
     form_type: str
     filing_text: str
+    filing_html: str | None = None
     cached: bool = False
 
 

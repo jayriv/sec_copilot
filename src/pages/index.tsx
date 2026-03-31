@@ -12,6 +12,7 @@ type FilingResponse = {
   year: string;
   form_type: string;
   filing_text: string;
+  filing_html?: string | null;
   cached?: boolean;
 };
 
@@ -27,6 +28,7 @@ export default function HomePage() {
   const {
     filingKey,
     documentText,
+    documentHtml,
     messages,
     selectedText,
     setSelectedText,
@@ -202,7 +204,12 @@ export default function HomePage() {
       <section className="grid h-[calc(100%-68px)] grid-cols-12 gap-5">
         <div className="col-span-7 flex flex-col gap-4">
           <RecentResearch items={recents} onPick={onSwitchTicker} />
-          <FilingReader text={documentText} sourceQuote={sourceQuote} onAskSelection={onAskSelected} />
+          <FilingReader
+            text={documentText}
+            html={documentHtml}
+            sourceQuote={sourceQuote}
+            onAskSelection={onAskSelected}
+          />
         </div>
         <div className="col-span-5">
           <ChatPanel

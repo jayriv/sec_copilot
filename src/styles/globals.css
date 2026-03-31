@@ -15,3 +15,21 @@ body {
 .source-highlight {
   @apply bg-yellow-100/90 rounded-sm;
 }
+
+/* SEC filing HTML: tables & TOC layout */
+.filing-html table {
+  @apply w-full border-collapse text-[0.8125rem];
+}
+
+.filing-html th,
+.filing-html td {
+  @apply border border-slate-200 px-2 py-1 align-top;
+}
+
+.filing-html tr:nth-child(even) {
+  @apply bg-slate-50/60;
+}
+
+.filing-html a {
+  @apply text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-slate-900;
+}

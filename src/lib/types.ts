@@ -22,6 +22,8 @@ export type StoredSession = {
   messages: ChatMessage[];
   highlights: Highlight[];
   documentText: string;
+  /** Sanitized HTML from SEC filing when available (display); plain text remains in documentText for LLM. */
+  documentHtml: string;
   selectedText: string;
   updatedAt: number;
 };

@@ -12,7 +12,17 @@ class FilingBundle:
     year: str
     form_type: str
     text: str
+    html: str | None = None
     cached: bool = False
+
+
+_HTML_MAX_CHARS = 350_000
+_TEXT_MAX_CHARS = 120_000
+
+
+def _strip_html_to_text(raw_html: str) -> str:
+    without_scripts = re.sub(r"<script[^>]*>[\s\S]*?</script>", " ", raw_html, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", without_scripts)).strip()
 
 
 _FILING_CACHE: dict[tuple[str, str, str], tuple[float, FilingBundle]] = {}
@@ -46,6 +56,7 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
             year=cached_bundle.year,
             form_type=cached_bundle.form_type,
             text=cached_bundle.text,
+            html=cached_bundle.html,
             cached=True,
         )
 
@@ -53,15 +64,37 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
     filings = company.get_filings(form=form_type.upper())
     filing = filings.latest()
 
+    html_content: str | None = None
+    if hasattr(filing, "html"):
+        try:
+            raw_html = filing.html()
+            if isinstance(raw_html, str) and raw_html.strip():
+                html_content = raw_html[:_HTML_MAX_CHARS]
+        except Exception:
+            html_content = None
+
     text = ""
     if hasattr(filing, "text"):
-        text = filing.text()
+        try:
+            text = (filing.text() or "").strip()
+        except Exception:
+            text = ""
+    if not text and html_content:
+        text = _strip_html_to_text(html_content)
     if not text and hasattr(filing, "markdown"):
-        text = filing.markdown()
-    if not text and hasattr(filing, "html"):
-        text = re.sub("<[^<]+?>", " ", filing.html())
+        try:
+            text = (filing.markdown() or "").strip()
+        except Exception:
+            pass
 
-    bundle = FilingBundle(ticker=ticker.upper(), year=year, form_type=form_type.upper(), text=text[:60000], cached=False)
+    bundle = FilingBundle(
+        ticker=ticker.upper(),
+        year=year,
+        form_type=form_type.upper(),
+        text=text[:_TEXT_MAX_CHARS],
+        html=html_content,
+        cached=False,
+    )
     _FILING_CACHE[cache_key] = (time(), bundle)
     return bundle
 
