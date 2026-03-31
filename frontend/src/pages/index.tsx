@@ -44,10 +44,33 @@ export default function HomePage() {
   const [lastPrompt, setLastPrompt] = useState<string | undefined>();
   const [errorScope, setErrorScope] = useState<"ticker" | "chat" | undefined>();
   const [isCachedFiling, setIsCachedFiling] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
 
   useEffect(() => {
     setRecents(loadRecents());
   }, [filingKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${apiBase}/health`);
+        if (!cancelled) {
+          setHealthStatus(response.ok ? "online" : "offline");
+        }
+      } catch {
+        if (!cancelled) {
+          setHealthStatus("offline");
+        }
+      }
+    };
+    checkHealth();
+    const timer = window.setInterval(checkHealth, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const fetchFiling = async (key: FilingKey) => {
     const response = await fetch(`${apiBase}/filing?ticker=${key.ticker}&year=${key.year}&form_type=${key.formType}`);
@@ -142,6 +165,18 @@ export default function HomePage() {
             {isCachedFiling && (
               <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 ring-1 ring-slate-200">cached</span>
             )}
+            <span
+              className={`rounded px-2 py-1 text-xs ring-1 ${
+                healthStatus === "online"
+                  ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                  : healthStatus === "offline"
+                    ? "bg-rose-50 text-rose-700 ring-rose-200"
+                    : "bg-slate-100 text-slate-600 ring-slate-200"
+              }`}
+              title={`Backend ${healthStatus}`}
+            >
+              {healthStatus === "online" ? "api online" : healthStatus === "offline" ? "api offline" : "checking api"}
+            </span>
           </div>
           <p className="text-sm text-slate-500">Session-aware filing research with comparison-ready Q&A.</p>
         </div>
