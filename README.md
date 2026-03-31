@@ -30,6 +30,8 @@ API routes live under **`/api/py`** (for example `/api/py/health`).
    - `EDGAR_IDENTITY` (format: `Your Name your@email.com`)
    - `LITELLM_MODEL` (`gpt-4` or your chosen model)
 3. Deploy. The frontend uses same-origin requests to `/api/py/*` by default (no `NEXT_PUBLIC_API_BASE_URL` needed).
+
+If the UI shows **api offline**, open `/api/py/health` on your deployment in the browser. That endpoint must return `{"status":"ok"}` without needing SEC data. In **Vercel → Project → Logs** (Functions), check for import errors: Python must load `edgartools` successfully, and **EDGAR_IDENTITY** must be set for `/filing` and `/chat` (not for `/health`).
 4. Optional: set **Function** max duration / plan limits; `vercel.json` requests up to 60s for `api/index.py` (requires a plan that supports it).
 
 ### Notes

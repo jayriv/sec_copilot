@@ -4,12 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from server.llm_service import ask_llm
 from server.models import ChatRequest, ChatResponse, FilingResponse
-from server.sec_service import get_filing_text, init_edgar_identity, maybe_get_comparison_context
+from server.sec_service import get_filing_text, maybe_get_comparison_context
 
 API_PREFIX = "/api/py"
 
 load_dotenv()
-init_edgar_identity()
 
 app = FastAPI(
     title="SEC Copilot API",
@@ -26,11 +25,13 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
 @app.get(f"{API_PREFIX}/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/filing", response_model=FilingResponse)
 @app.get(f"{API_PREFIX}/filing", response_model=FilingResponse)
 def filing(ticker: str, year: str, form_type: str) -> FilingResponse:
     try:
@@ -46,6 +47,7 @@ def filing(ticker: str, year: str, form_type: str) -> FilingResponse:
         raise HTTPException(status_code=500, detail=f"Failed to fetch filing: {exc}") from exc
 
 
+@app.post("/chat", response_model=ChatResponse)
 @app.post(f"{API_PREFIX}/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     try:

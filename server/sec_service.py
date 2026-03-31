@@ -17,6 +17,7 @@ class FilingBundle:
 
 _FILING_CACHE: dict[tuple[str, str, str], tuple[float, FilingBundle]] = {}
 _CACHE_TTL_SECONDS = 60 * 10
+_EDGAR_CONFIGURED = False
 
 
 def init_edgar_identity() -> None:
@@ -26,7 +27,16 @@ def init_edgar_identity() -> None:
     set_identity(identity)
 
 
+def ensure_edgar_identity() -> None:
+    global _EDGAR_CONFIGURED
+    if _EDGAR_CONFIGURED:
+        return
+    init_edgar_identity()
+    _EDGAR_CONFIGURED = True
+
+
 def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
+    ensure_edgar_identity()
     cache_key = (ticker.upper(), year, form_type.upper())
     cached = _FILING_CACHE.get(cache_key)
     if cached and (time() - cached[0]) < _CACHE_TTL_SECONDS:
