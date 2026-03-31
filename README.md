@@ -29,6 +29,7 @@ API routes live under **`/api/py`** (for example `/api/py/health`).
    - `OPENAI_API_KEY`
    - `EDGAR_IDENTITY` (format: `Your Name your@email.com`)
    - `LITELLM_MODEL` (`gpt-4` or your chosen model)
+   - Optional: `EDGAR_LOCAL_DATA_DIR` — **`api/index.py` sets this under `gettempdir()/edgartools` automatically** on Vercel / Lambda-style runtimes ([local storage guide](https://edgartools.readthedocs.io/en/stable/guides/local-storage/)). Override if your host still tries to use a read-only home directory.
 3. Deploy. The frontend uses same-origin requests to `/api/py/*` by default (no `NEXT_PUBLIC_API_BASE_URL` needed).
 
 If the UI shows **api offline**, open `/api/py/health` on your deployment in the browser. That endpoint must return `{"status":"ok"}` without needing SEC data. In **Vercel → Project → Logs** (Functions), check for import errors: Python must load `edgartools` successfully, and **EDGAR_IDENTITY** must be set for `/filing` and `/chat` (not for `/health`).
