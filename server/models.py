@@ -1,4 +1,13 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+
+class FilingAnchorModel(BaseModel):
+    id: str
+    label: str
+    level: int
+    source: Literal["toc", "heading", "target", "item"]
 
 
 class FilingRequest(BaseModel):
@@ -19,7 +28,14 @@ class FilingResponse(BaseModel):
     form_type: str
     filing_text: str
     filing_html: str | None = None
+    """When lazy HTML is on, this is only the leading slice; use filing_fragment for the rest."""
+    filing_html_partial: bool = False
+    filing_anchors: list[FilingAnchorModel] | None = None
     cached: bool = False
+
+
+class FilingFragmentResponse(BaseModel):
+    html: str
 
 
 class ChatResponse(BaseModel):

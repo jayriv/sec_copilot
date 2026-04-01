@@ -6,7 +6,7 @@ import { RecentResearch } from "@/components/RecentResearch";
 import { TickerSwitcher } from "@/components/TickerSwitcher";
 import { useSession } from "@/context/SessionContext";
 import { loadRecents } from "@/lib/storage";
-import { ChatMessage, FilingKey } from "@/lib/types";
+import { ChatMessage, FilingAnchor, FilingKey } from "@/lib/types";
 
 type FilingResponse = {
   ticker: string;
@@ -14,6 +14,8 @@ type FilingResponse = {
   form_type: string;
   filing_text: string;
   filing_html?: string | null;
+  filing_html_partial?: boolean;
+  filing_anchors?: FilingAnchor[] | null;
   cached?: boolean;
 };
 
@@ -30,6 +32,8 @@ export default function HomePage() {
     filingKey,
     documentText,
     documentHtml,
+    documentAnchors,
+    documentHtmlPartial,
     messages,
     selectedText,
     setSelectedText,
@@ -49,7 +53,7 @@ export default function HomePage() {
   const [errorScope, setErrorScope] = useState<"ticker" | "chat" | undefined>();
   const [isCachedFiling, setIsCachedFiling] = useState(false);
   const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
-  const [chatDocked, setChatDocked] = useState(true);
+  const [chatDocked, setChatDocked] = useState(false);
 
   useEffect(() => {
     setRecents(loadRecents());
@@ -95,7 +99,10 @@ export default function HomePage() {
     setLastTickerAttempt(key);
     try {
       const filingData = await fetchFiling(key);
-      switchTicker(key, filingData.filing_text, filingData.filing_html ?? "");
+      switchTicker(key, filingData.filing_text, filingData.filing_html ?? "", {
+        anchors: filingData.filing_anchors ?? [],
+        htmlPartial: Boolean(filingData.filing_html_partial)
+      });
       setIsCachedFiling(Boolean(filingData.cached));
       setSourceQuote(undefined);
       setSessionSavedMessage(`Session saved for ${key.ticker} ${key.formType} (${key.year}).`);
@@ -109,6 +116,7 @@ export default function HomePage() {
   };
 
   const onAskSelected = (text: string) => {
+    setChatDocked(true);
     addHighlight(text);
     setSelectedText(text);
     addMessage({
@@ -228,7 +236,17 @@ export default function HomePage() {
           style={chatDocked ? { paddingRight: `calc(${chatOverlayWidth} + 1rem)` } : {}}
         >
           <div className="min-h-0 flex-1">
-            <FilingReader text={documentText} html={documentHtml} sourceQuote={sourceQuote} onAskSelection={onAskSelected} />
+            <FilingReader
+              text={documentText}
+              html={documentHtml}
+              sourceQuote={sourceQuote}
+              onAskSelection={onAskSelected}
+              filingKey={filingKey}
+              apiBase={apiBase}
+              apiPrefix={apiPrefix}
+              externalAnchors={documentAnchors}
+              htmlPartial={documentHtmlPartial}
+            />
           </div>
           <RecentResearch items={recents} onPick={onSwitchTicker} />
         </div>

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   buildFilingAnchors,
   COPILOT_PURPLE_SHADOW_HOVER,
@@ -7,12 +8,19 @@ import {
   scrollFilingFragmentIntoView
 } from "@/lib/filingAnchors";
 import { useTextSelection } from "@/hooks/useTextSelection";
+import type { FilingAnchor, FilingKey } from "@/lib/types";
 
 type Props = {
   text: string;
   html?: string;
   sourceQuote?: string;
   onAskSelection: (text: string) => void;
+  filingKey?: FilingKey;
+  apiBase?: string;
+  apiPrefix?: string;
+  /** From API (full-doc parse); keeps the TOC when only a partial HTML head is loaded. */
+  externalAnchors?: FilingAnchor[];
+  htmlPartial?: boolean;
 };
 
 function escapeHtmlText(s: string): string {
@@ -23,13 +31,33 @@ function escapeHtmlText(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: Props) => {
+export const FilingReader = ({
+  text,
+  html = "",
+  sourceQuote,
+  onAskSelection,
+  filingKey,
+  apiBase = "",
+  apiPrefix = "/api/py",
+  externalAnchors,
+  htmlPartial = false
+}: Props) => {
   const { selection, dismiss } = useTextSelection("filing-reader");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const contentRootRef = useRef<HTMLDivElement>(null);
   const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
-  const [anchors, setAnchors] = useState<ReturnType<typeof buildFilingAnchors>>([]);
-  const showHtml = Boolean(html?.trim());
+  const [anchors, setAnchors] = useState<FilingAnchor[]>([]);
+  const [fragmentOverride, setFragmentOverride] = useState<string | null>(null);
+  const pendingScrollIdRef = useRef<string | null>(null);
+  const fragmentCacheRef = useRef<Map<string, string>>(new Map());
+
+  const showHtml = Boolean((fragmentOverride ?? html)?.trim());
+  const rawHtmlInput = fragmentOverride ?? html;
+
+  useEffect(() => {
+    setFragmentOverride(null);
+    fragmentCacheRef.current.clear();
+  }, [html]);
 
   useEffect(() => {
     if (!showHtml) {
@@ -40,7 +68,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     let cancelled = false;
     void (async () => {
       const DOMPurify = (await import("dompurify")).default;
-      let raw = html;
+      let raw = rawHtmlInput;
       if (sourceQuote && raw.includes(sourceQuote)) {
         raw = raw.replace(
           sourceQuote,
@@ -58,14 +86,14 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
 
       try {
         const doc = new DOMParser().parseFromString(clean, "text/html");
-        const nextAnchors = buildFilingAnchors(doc);
+        const fromServer = externalAnchors && externalAnchors.length > 0 ? externalAnchors : buildFilingAnchors(doc);
         if (!cancelled) {
-          setAnchors(nextAnchors);
+          setAnchors(fromServer);
           setSanitizedHtml(doc.body.innerHTML);
         }
       } catch {
         if (!cancelled) {
-          setAnchors([]);
+          setAnchors(externalAnchors && externalAnchors.length > 0 ? externalAnchors : []);
           setSanitizedHtml(clean);
         }
       }
@@ -73,7 +101,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     return () => {
       cancelled = true;
     };
-  }, [html, showHtml, sourceQuote]);
+  }, [html, fragmentOverride, showHtml, sourceQuote, externalAnchors]);
 
   useEffect(() => {
     if (!sourceQuote || !showHtml) return;
@@ -81,6 +109,15 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       scrollFilingFragmentIntoView("source-quote-anchor", contentRootRef.current, scrollContainerRef.current);
     });
   }, [sourceQuote, sanitizedHtml, showHtml]);
+
+  useEffect(() => {
+    const id = pendingScrollIdRef.current;
+    if (!id || !sanitizedHtml) return;
+    pendingScrollIdRef.current = null;
+    requestAnimationFrame(() => {
+      scrollFilingFragmentIntoView(id, contentRootRef.current, scrollContainerRef.current);
+    });
+  }, [sanitizedHtml]);
 
   const lines = useMemo(() => {
     const sanitized = text ?? "";
@@ -98,6 +135,27 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     });
     return rendered.join("").split("\n");
   }, [text, sourceQuote]);
+
+  const fetchSectionHtml = useCallback(
+    async (fragment: string): Promise<string | null> => {
+      const cached = fragmentCacheRef.current.get(fragment);
+      if (cached) return cached;
+      if (!htmlPartial || !filingKey) return null;
+      const params = new URLSearchParams({
+        ticker: filingKey.ticker,
+        year: filingKey.year,
+        form_type: filingKey.formType,
+        fragment
+      });
+      const url = `${apiBase}${apiPrefix}/filing/fragment?${params}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = (await res.json()) as { html: string };
+      fragmentCacheRef.current.set(fragment, data.html);
+      return data.html;
+    },
+    [apiBase, apiPrefix, filingKey, htmlPartial]
+  );
 
   const scrollByLabelFallback = (label: string): boolean => {
     const root = contentRootRef.current;
@@ -127,15 +185,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
     };
 
-    const isInsideTocHashLink = (el: Element): boolean => {
-      const a = el.closest("a[href^=\"#\"]");
-      if (!a) return false;
-      return relTopInFiling(a as HTMLElement) < 0.3;
-    };
-
-    if (itemMatch) {
-      const piece = itemMatch[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const itemRe = new RegExp(`\\bitem\\s+${piece}\\b`, "i");
+    const collectItemNodes = (itemRe: RegExp) => {
       const nodes = root.querySelectorAll(
         "p,div,td,th,span,strong,b,h1,h2,h3,h4,h5,h6,font,li,em,i,a"
       );
@@ -143,17 +193,27 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       for (let i = 0; i < nodes.length; i++) {
         const el = nodes[i] as HTMLElement;
         if (el.closest("script,style")) continue;
-        if (el.children.length > 50) continue;
+        if (el.children.length > 100) continue;
         const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim();
-        if (txt.length < 12 || txt.length > 600) continue;
-        if (!itemRe.test(txt.slice(0, 400))) continue;
-        if (isInsideTocHashLink(el)) continue;
+        if (txt.length < 8 || txt.length > 900) continue;
+        if (!itemRe.test(txt.slice(0, 500))) continue;
         if (el.tagName === "A") {
           const href = el.getAttribute("href")?.trim() ?? "";
-          if (href.startsWith("#") && relTopInFiling(el) < 0.3) continue;
+          if (href.startsWith("#") && relTopInFiling(el) < 0.2) continue;
         }
-        if (relTopInFiling(el) < 0.06) continue;
         candidates.push(el);
+      }
+      return candidates;
+    };
+
+    if (itemMatch) {
+      const piece = itemMatch[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const itemRe = new RegExp(`\\bitem\\s+${piece}\\b`, "i");
+      const looseRe = new RegExp(`item\\s+${piece}\\b`, "i");
+
+      let candidates = collectItemNodes(itemRe);
+      if (candidates.length === 0) {
+        candidates = collectItemNodes(looseRe);
       }
 
       if (candidates.length === 0) return false;
@@ -161,8 +221,8 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       let working = candidates.filter((el) => !isInsideLikelyToc(el, root));
       if (working.length === 0) working = candidates;
 
-      if (working.some((el) => relTopInFiling(el) > 0.14)) {
-        const narrowed = working.filter((el) => relTopInFiling(el) > 0.14);
+      if (working.length >= 2 && working.some((el) => relTopInFiling(el) > 0.1)) {
+        const narrowed = working.filter((el) => relTopInFiling(el) > 0.05);
         if (narrowed.length > 0) working = narrowed;
       }
 
@@ -189,10 +249,9 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     const pool = Array.from(
       root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,th,span,li,font,b,strong,a,em")
     ).filter((el) => {
-      if (isInsideTocHashLink(el)) return false;
       if (el.tagName === "A") {
         const href = el.getAttribute("href")?.trim() ?? "";
-        if (href.startsWith("#") && relTopInFiling(el as HTMLElement) < 0.25) return false;
+        if (href.startsWith("#") && relTopInFiling(el as HTMLElement) < 0.18) return false;
       }
       return matchesText(el);
     });
@@ -221,52 +280,79 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     return true;
   };
 
+  const navigateToSection = async (anchor: { id: string; label: string }): Promise<boolean> => {
+    if (scrollByLabelFallback(anchor.label)) return true;
+    const root = contentRootRef.current;
+    const scroller = scrollContainerRef.current;
+    if (root && scroller && findBestAnchorTarget(root, anchor.id)) {
+      scrollFilingFragmentIntoView(anchor.id, root, scroller);
+      return true;
+    }
+    const sectionHtml = await fetchSectionHtml(anchor.id);
+    if (sectionHtml) {
+      pendingScrollIdRef.current = anchor.id;
+      setFragmentOverride(sectionHtml);
+      return true;
+    }
+    return false;
+  };
+
   return (
     <section className="group/filing relative flex h-full min-h-0 flex-col rounded-2xl border border-violet-100/80 bg-white p-5 shadow-[0_6px_20px_-6px_rgba(54,1,63,0.26)] ring-1 ring-slate-200/80 transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_14px_44px_-14px_rgba(54,1,63,0.24)]">
       {showHtml && anchors.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <label className="text-xs font-medium text-violet-950/80">
-            Jump to section
-            <select
-              className="ml-2 rounded-lg border border-violet-200/90 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-[0_4px_14px_-4px_rgba(54,1,63,0.22)] outline-none transition hover:shadow-[0_6px_18px_-4px_rgba(54,1,63,0.3)] focus:border-violet-400 focus:ring-2 focus:ring-violet-300/50"
-              defaultValue=""
-              onChange={(e) => {
-                const idx = Number(e.target.value);
-                if (!Number.isFinite(idx) || idx < 0) return;
-                const anchor = anchors[idx];
-                if (!anchor) return;
-                requestAnimationFrame(() => {
-                  const root = contentRootRef.current;
-                  const scroller = scrollContainerRef.current;
-                  if (!root || !scroller) return;
-                  if (scrollByLabelFallback(anchor.label)) return;
-                  scrollFilingFragmentIntoView(anchor.id, root, scroller);
-                });
-                e.currentTarget.value = "";
-              }}
-            >
-              <option value="" disabled>
-                Select…
-              </option>
-              {anchors.map((a, idx) => (
-                <option key={`${a.source}-${a.id}`} value={String(idx)}>
-                  {`${"  ".repeat(Math.max(0, a.level - 1))}${a.label}`}
+        <details
+          open
+          className="group/toc mb-3 shrink-0 rounded-xl border border-violet-100/90 bg-gradient-to-b from-white to-violet-50/40 shadow-[0_4px_16px_-6px_rgba(54,1,63,0.15)] ring-1 ring-violet-100/60"
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-medium text-violet-950/90 [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-violet-600 transition group-open/toc:rotate-90" strokeWidth={2} />
+            <span>Table of contents & jump to section</span>
+            {htmlPartial && (
+              <span className="ml-auto rounded-md bg-violet-100/80 px-1.5 py-0.5 text-[0.65rem] font-normal text-violet-900/70">
+                sections on demand
+              </span>
+            )}
+          </summary>
+          <div className="border-t border-violet-100/80 px-3 pb-3 pt-1">
+            <label className="block text-[0.65rem] font-medium uppercase tracking-wide text-violet-950/55">
+              Section
+              <select
+                className="mt-1.5 w-full max-w-md rounded-lg border border-violet-200/90 bg-white px-2 py-2 text-xs text-slate-800 shadow-[0_4px_14px_-4px_rgba(54,1,63,0.22)] outline-none transition hover:shadow-[0_6px_18px_-4px_rgba(54,1,63,0.3)] focus:border-violet-400 focus:ring-2 focus:ring-violet-300/50"
+                defaultValue=""
+                onChange={(e) => {
+                  const idx = Number(e.target.value);
+                  if (!Number.isFinite(idx) || idx < 0) return;
+                  const anchor = anchors[idx];
+                  if (!anchor) return;
+                  void (async () => {
+                    await navigateToSection(anchor);
+                  })();
+                  e.currentTarget.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  Select…
                 </option>
-              ))}
-            </select>
-          </label>
-          {sourceQuote && (
-            <button
-              type="button"
-              className="rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-xs font-medium text-violet-950 shadow-[0_4px_12px_-4px_rgba(54,1,63,0.2)] transition hover:bg-violet-50"
-              onClick={() =>
-                scrollFilingFragmentIntoView("source-quote-anchor", contentRootRef.current, scrollContainerRef.current)
-              }
-            >
-              Jump to quote
-            </button>
-          )}
-        </div>
+                {anchors.map((a, idx) => (
+                  <option key={`${a.source}-${a.id}-${idx}`} value={String(idx)}>
+                    {`${"  ".repeat(Math.max(0, a.level - 1))}${a.label}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {sourceQuote && (
+              <button
+                type="button"
+                className="mt-2 rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-xs font-medium text-violet-950 shadow-[0_4px_12px_-4px_rgba(54,1,63,0.2)] transition hover:bg-violet-50"
+                onClick={() =>
+                  scrollFilingFragmentIntoView("source-quote-anchor", contentRootRef.current, scrollContainerRef.current)
+                }
+              >
+                Jump to quote
+              </button>
+            )}
+          </div>
+        </details>
       )}
       <div
         id="filing-reader"
@@ -284,7 +370,11 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
             fragment = href.slice(1);
           } else if (href.includes("#")) {
             try {
-              fragment = new URL(href, window.location.href).hash.slice(1);
+              const u = new URL(href, window.location.href);
+              if (u.origin !== window.location.origin || u.pathname !== window.location.pathname) {
+                return;
+              }
+              fragment = u.hash.slice(1);
             } catch {
               return;
             }
@@ -294,14 +384,14 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
           const root = contentRootRef.current;
           if (!root) return;
           const label = (a.textContent ?? "").replace(/\s+/g, " ").trim();
-          if (label && scrollByLabelFallback(label)) {
-            e.preventDefault();
-            return;
-          }
-          if (findBestAnchorTarget(root, fragment)) {
-            e.preventDefault();
-            scrollFilingFragmentIntoView(fragment, root, scrollContainerRef.current);
-          }
+
+          e.preventDefault();
+          void (async () => {
+            const ok = await navigateToSection({ id: fragment, label: label || fragment });
+            if (!ok && findBestAnchorTarget(root, fragment)) {
+              scrollFilingFragmentIntoView(fragment, root, scrollContainerRef.current);
+            }
+          })();
         }}
       >
         {showHtml && sanitizedHtml && (

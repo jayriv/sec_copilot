@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { ChatMessage, FilingKey, Highlight, StoredSession } from "@/lib/types";
+import { ChatMessage, FilingAnchor, FilingKey, Highlight, StoredSession } from "@/lib/types";
 import { loadSession, saveSession } from "@/lib/storage";
 
 const defaultKey: FilingKey = { ticker: "CHGG", year: "2026", formType: "10-K" };
@@ -11,11 +11,18 @@ type SessionContextValue = {
   selectedText: string;
   documentText: string;
   documentHtml: string;
+  documentAnchors: FilingAnchor[];
+  documentHtmlPartial: boolean;
   setSelectedText: (value: string) => void;
   setDocumentText: (value: string) => void;
   addMessage: (message: ChatMessage) => void;
   addHighlight: (text: string) => void;
-  switchTicker: (next: FilingKey, newDocText?: string, newDocHtml?: string) => void;
+  switchTicker: (
+    next: FilingKey,
+    newDocText?: string,
+    newDocHtml?: string,
+    filingMeta?: { anchors?: FilingAnchor[]; htmlPartial?: boolean }
+  ) => void;
 };
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
@@ -26,13 +33,17 @@ const createEmptySession = (filingKey: FilingKey, documentText = "", documentHtm
   highlights: [],
   documentText,
   documentHtml,
+  documentAnchors: [],
+  documentHtmlPartial: false,
   selectedText: "",
   updatedAt: Date.now()
 });
 
 const normalizeSession = (raw: StoredSession): StoredSession => ({
   ...raw,
-  documentHtml: raw.documentHtml ?? ""
+  documentHtml: raw.documentHtml ?? "",
+  documentHtmlPartial: raw.documentHtmlPartial ?? false,
+  documentAnchors: raw.documentAnchors ?? []
 });
 
 export const SessionProvider = ({ children }: { children: ReactNode }) => {
@@ -48,7 +59,12 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     saveSession(next);
   };
 
-  const switchTicker = (nextKey: FilingKey, newDocText = "", newDocHtml = "") => {
+  const switchTicker = (
+    nextKey: FilingKey,
+    newDocText = "",
+    newDocHtml = "",
+    filingMeta?: { anchors?: FilingAnchor[]; htmlPartial?: boolean }
+  ) => {
     saveSession({ ...session, updatedAt: Date.now() });
     const loaded = loadSession(nextKey);
     const base = loaded ? normalizeSession(loaded) : createEmptySession(nextKey, "", "");
@@ -56,7 +72,12 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       ...base,
       filingKey: nextKey,
       ...(newDocText
-        ? { documentText: newDocText, documentHtml: newDocHtml }
+        ? {
+            documentText: newDocText,
+            documentHtml: newDocHtml ?? "",
+            documentAnchors: filingMeta?.anchors ?? [],
+            documentHtmlPartial: filingMeta?.htmlPartial ?? false
+          }
         : {}),
       selectedText: "",
       updatedAt: Date.now()
@@ -72,6 +93,8 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       selectedText: session.selectedText,
       documentText: session.documentText,
       documentHtml: session.documentHtml ?? "",
+      documentAnchors: session.documentAnchors ?? [],
+      documentHtmlPartial: session.documentHtmlPartial ?? false,
       setSelectedText: (selectedText) => persist({ ...session, selectedText, updatedAt: Date.now() }),
       setDocumentText: (documentText) => persist({ ...session, documentText, updatedAt: Date.now() }),
       addMessage: (message) =>

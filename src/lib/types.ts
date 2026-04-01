@@ -4,6 +4,14 @@ export type FilingKey = {
   formType: string;
 };
 
+/** Jump targets for the filing reader (mirrors server FilingAnchorModel). */
+export type FilingAnchor = {
+  id: string;
+  label: string;
+  level: number;
+  source: "toc" | "heading" | "target" | "item";
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -26,6 +34,9 @@ export type StoredSession = {
   documentText: string;
   /** Sanitized HTML from SEC filing when available (display); plain text remains in documentText for LLM. */
   documentHtml: string;
+  /** When the API sent a partial HTML head, TOC still comes from the full parse on the server. */
+  documentHtmlPartial?: boolean;
+  documentAnchors?: FilingAnchor[];
   selectedText: string;
   updatedAt: number;
 };

@@ -5,6 +5,8 @@ from time import time
 
 from edgar import Company, set_identity
 
+from server.filing_anchors import build_filing_anchors, extract_fragment_html
+
 
 @dataclass
 class FilingBundle:
@@ -13,11 +15,34 @@ class FilingBundle:
     form_type: str
     text: str
     html: str | None = None
+    anchors: list[dict] | None = None
     cached: bool = False
 
 
-_HTML_MAX_CHARS = 350_000
-_TEXT_MAX_CHARS = 120_000
+def _int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return max(1, int(raw.strip()))
+    except ValueError:
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off")
+
+
+# 10-K HTML often exceeds 1–3 MB; a 350k cap cut off later Items (e.g. Item 7 MD&A) in the reader.
+_HTML_MAX_CHARS = _int_env("SEC_COPILOT_HTML_MAX_CHARS", 8_000_000)
+_TEXT_MAX_CHARS = _int_env("SEC_COPILOT_TEXT_MAX_CHARS", 500_000)
+# Initial HTML payload: TOC + early pages. Set SEC_COPILOT_LAZY_FILING_HTML=0 to send full HTML in one response.
+_LAZY_HTML = _env_bool("SEC_COPILOT_LAZY_FILING_HTML", True)
+_HEAD_HTML_CHARS = _int_env("SEC_COPILOT_HTML_HEAD_CHARS", 500_000)
+_FRAGMENT_MAX_CHARS = _int_env("SEC_COPILOT_FRAGMENT_MAX_CHARS", 2_500_000)
 
 
 def _strip_html_to_text(raw_html: str) -> str:
@@ -74,12 +99,16 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
     cached = _FILING_CACHE.get(cache_key)
     if cached and (time() - cached[0]) < _CACHE_TTL_SECONDS:
         cached_bundle = cached[1]
+        anchors = cached_bundle.anchors
+        if cached_bundle.html and anchors is None:
+            anchors = build_filing_anchors(cached_bundle.html)
         return FilingBundle(
             ticker=cached_bundle.ticker,
             year=cached_bundle.year,
             form_type=cached_bundle.form_type,
             text=cached_bundle.text,
             html=cached_bundle.html,
+            anchors=anchors,
             cached=True,
         )
 
@@ -109,16 +138,38 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
         except Exception:
             pass
 
+    anchors = build_filing_anchors(html_content) if html_content else None
     bundle = FilingBundle(
         ticker=ticker.upper(),
         year=year,
         form_type=form_type.upper(),
         text=text[:_TEXT_MAX_CHARS],
         html=html_content,
+        anchors=anchors,
         cached=False,
     )
     _FILING_CACHE[cache_key] = (time(), bundle)
     return bundle
+
+
+def prepare_filing_display(bundle: FilingBundle) -> tuple[str | None, bool, list[dict] | None]:
+    """Slice HTML for the first response when lazy mode is on; anchors always come from the full document."""
+    anchors = bundle.anchors
+    if bundle.html and anchors is None:
+        anchors = build_filing_anchors(bundle.html)
+    display_html = bundle.html
+    partial = False
+    if bundle.html and _LAZY_HTML and len(bundle.html) > _HEAD_HTML_CHARS:
+        display_html = bundle.html[:_HEAD_HTML_CHARS]
+        partial = True
+    return display_html, partial, anchors
+
+
+def get_filing_fragment_html(ticker: str, year: str, form_type: str, fragment: str) -> str | None:
+    bundle = get_filing_text(ticker=ticker, year=year, form_type=form_type)
+    if not bundle.html:
+        return None
+    return extract_fragment_html(bundle.html, fragment, _FRAGMENT_MAX_CHARS)
 
 
 def _normalize_form_label(form: str) -> str:

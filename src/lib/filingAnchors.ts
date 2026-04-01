@@ -117,12 +117,7 @@ export function findBestAnchorTarget(contentRoot: HTMLElement | null, fragment: 
   if (candidates.length >= 2) {
     return candidates[1];
   }
-
-  const only = candidates[0];
-  if (relativeTopInRoot(only, contentRoot) < 0.22) {
-    return null;
-  }
-  return only;
+  return candidates[0];
 }
 
 /** @deprecated Use findBestAnchorTarget — kept for quick checks; may return a TOC node. */
@@ -142,10 +137,6 @@ export function scrollFilingFragmentIntoView(
 ) {
   const target = findBestAnchorTarget(contentRoot, fragment);
   if (!target) return;
-
-  if (contentRoot && relativeTopInRoot(target, contentRoot) < 0.18) {
-    return;
-  }
 
   if (!scrollContainer || !scrollContainer.contains(target)) {
     target.scrollIntoView({ behavior: "smooth", block: "start" });
