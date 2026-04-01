@@ -70,9 +70,10 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
   }, [html, showHtml, sourceQuote]);
 
   useEffect(() => {
-    if (!sourceQuote) return;
-    const element = document.querySelector(".source-quote-anchor");
-    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!sourceQuote || !showHtml) return;
+    requestAnimationFrame(() => {
+      scrollFilingFragmentIntoView("source-quote-anchor", contentRootRef.current, scrollContainerRef.current);
+    });
   }, [sourceQuote, sanitizedHtml, showHtml]);
 
   const lines = useMemo(() => {

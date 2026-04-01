@@ -60,7 +60,9 @@ export function findAnchorTarget(contentRoot: HTMLElement | null, fragment: stri
 
   if (!el && contentRoot) {
     const lower = id.toLowerCase();
-    for (const node of contentRoot.querySelectorAll("[id]")) {
+    const idNodes = Array.from(contentRoot.querySelectorAll("[id]"));
+    for (let i = 0; i < idNodes.length; i++) {
+      const node = idNodes[i];
       if (node.id.toLowerCase() === lower) {
         el = node;
         break;
