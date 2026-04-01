@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildFilingAnchors, COPILOT_PURPLE_SHADOW_HOVER, findAnchorTarget, scrollFilingFragmentIntoView } from "@/lib/filingAnchors";
+import {
+  buildFilingAnchors,
+  COPILOT_PURPLE_SHADOW_HOVER,
+  findBestAnchorTarget,
+  isInsideLikelyToc,
+  scrollFilingFragmentIntoView
+} from "@/lib/filingAnchors";
 import { useTextSelection } from "@/hooks/useTextSelection";
 
 type Props = {
@@ -102,21 +108,36 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     const itemToken = normalizedLabel.match(/\bitem\s+\d{1,2}[a-z]?\b/i)?.[0]?.toLowerCase();
     if (!normalizedLabel && !itemToken) return false;
 
-    const candidates = Array.from(
-      root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,font,b,strong")
-    ).filter((el) => {
+    const verticalOffsetInContainer = (el: HTMLElement) => {
+      const cr = scrollContainer.getBoundingClientRect();
+      const er = el.getBoundingClientRect();
+      return scrollContainer.scrollTop + (er.top - cr.top);
+    };
+
+    const matchesText = (el: Element) => {
       const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
       if (!txt || txt.length > 260) return false;
-      if (el.closest("a[href]")) return false; // Skip TOC links near the top.
       if (itemToken && txt.includes(itemToken)) return true;
       return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
-    });
+    };
 
-    if (candidates.length === 0) return false;
+    const pool = Array.from(root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,font,b,strong")).filter(matchesText);
 
-    const threshold = root.scrollHeight * 0.2;
-    const deeper = candidates.filter((el) => (el as HTMLElement).offsetTop > threshold);
-    const target = (deeper.length > 0 ? deeper[0] : candidates[candidates.length - 1]) as HTMLElement;
+    if (pool.length === 0) return false;
+
+    const nonToc = pool.filter((el) => !isInsideLikelyToc(el, root));
+    const candidates = nonToc.length > 0 ? nonToc : pool;
+
+    let target = candidates[0] as HTMLElement;
+    let bestY = verticalOffsetInContainer(target);
+    for (let i = 1; i < candidates.length; i++) {
+      const el = candidates[i] as HTMLElement;
+      const y = verticalOffsetInContainer(el);
+      if (y > bestY) {
+        bestY = y;
+        target = el;
+      }
+    }
 
     const cRect = scrollContainer.getBoundingClientRect();
     const tRect = target.getBoundingClientRect();
@@ -142,7 +163,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
                 requestAnimationFrame(() => {
                   const root = contentRootRef.current;
                   const scroller = scrollContainerRef.current;
-                  if (root && findAnchorTarget(root, anchor.id)) {
+                  if (root && findBestAnchorTarget(root, anchor.id)) {
                     scrollFilingFragmentIntoView(anchor.id, root, scroller);
                     return;
                   }
@@ -199,7 +220,7 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
 
           const root = contentRootRef.current;
           if (!root) return;
-          const hasTarget = findAnchorTarget(root, fragment);
+          const hasTarget = findBestAnchorTarget(root, fragment);
           if (hasTarget) {
             e.preventDefault();
             scrollFilingFragmentIntoView(fragment, root, scrollContainerRef.current);

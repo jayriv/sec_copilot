@@ -31,46 +31,84 @@ function escapeAttr(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/** Resolve a fragment to an element inside the filing HTML root (not the scroll container). */
-export function findAnchorTarget(contentRoot: HTMLElement | null, fragment: string): Element | null {
-  const raw = fragment.replace(/^#/, "").trim();
-  if (!raw) return null;
-  const id = decodeFragment(raw);
-  const scope: Document | HTMLElement = contentRoot ?? document.documentElement;
+/** SEC filings often duplicate anchors: TOC row + real section. Tables with many `#` links are usually the TOC. */
+export function isInsideLikelyToc(el: Element, contentRoot: HTMLElement): boolean {
+  const table = el.closest("table");
+  if (!table || !contentRoot.contains(table)) return false;
+  const hashLinks = table.querySelectorAll('a[href^="#"]');
+  return hashLinks.length >= 4;
+}
 
-  const tryById = (fid: string) => {
-    try {
-      return scope.querySelector(`#${CSS.escape(fid)}`);
-    } catch {
-      return null;
+function sortElementsInTreeOrder(nodes: Element[]): Element[] {
+  return [...nodes].sort((a, b) => {
+    const bit = a.compareDocumentPosition(b);
+    if (bit & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (bit & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  });
+}
+
+/** Collect all elements matching a fragment (ids often duplicated: TOC vs body). */
+function collectAnchorCandidates(contentRoot: HTMLElement, fragment: string): Element[] {
+  const raw = fragment.replace(/^#/, "").trim();
+  if (!raw) return [];
+  const id = decodeFragment(raw);
+  const seen = new Set<Element>();
+  const add = (node: Element | null) => {
+    if (node && contentRoot.contains(node) && !seen.has(node)) {
+      seen.add(node);
     }
   };
 
-  let el: Element | null = tryById(id);
-  if (!el) el = scope.querySelector(`[name="${escapeAttr(id)}"]`);
-  if (!el && id !== raw) {
-    el = tryById(raw);
-    if (!el) el = scope.querySelector(`[name="${escapeAttr(raw)}"]`);
+  try {
+    add(contentRoot.querySelector(`#${CSS.escape(id)}`));
+  } catch {
+    /* ignore */
   }
-
-  if (!el && contentRoot?.ownerDocument) {
-    const byId = contentRoot.ownerDocument.getElementById(id);
-    if (byId && contentRoot.contains(byId)) el = byId;
-  }
-
-  if (!el && contentRoot) {
-    const lower = id.toLowerCase();
-    const idNodes = Array.from(contentRoot.querySelectorAll("[id]"));
-    for (let i = 0; i < idNodes.length; i++) {
-      const node = idNodes[i];
-      if (node.id.toLowerCase() === lower) {
-        el = node;
-        break;
-      }
+  add(contentRoot.querySelector(`[name="${escapeAttr(id)}"]`));
+  if (id !== raw) {
+    try {
+      add(contentRoot.querySelector(`#${CSS.escape(raw)}`));
+    } catch {
+      /* ignore */
     }
+    add(contentRoot.querySelector(`[name="${escapeAttr(raw)}"]`));
   }
 
-  return el;
+  const doc = contentRoot.ownerDocument;
+  if (doc) {
+    const byId = doc.getElementById(id);
+    if (byId && contentRoot.contains(byId)) add(byId);
+  }
+
+  const lower = id.toLowerCase();
+  Array.from(contentRoot.querySelectorAll("[id]")).forEach((node) => {
+    if (node.id === id || node.id.toLowerCase() === lower) add(node);
+  });
+
+  return sortElementsInTreeOrder(Array.from(seen));
+}
+
+/**
+ * Prefer the real section target over the TOC row (SEC HTML often lists the same id twice).
+ * Returns null if the only matches are in the TOC so callers can fall back to label search.
+ */
+export function findBestAnchorTarget(contentRoot: HTMLElement | null, fragment: string): Element | null {
+  if (!contentRoot) return null;
+  const candidates = collectAnchorCandidates(contentRoot, fragment);
+  if (candidates.length === 0) return null;
+
+  const nonToc = candidates.filter((c) => !isInsideLikelyToc(c, contentRoot));
+  if (nonToc.length > 0) {
+    return nonToc[nonToc.length - 1];
+  }
+
+  return null;
+}
+
+/** @deprecated Use findBestAnchorTarget — kept for quick checks; may return a TOC node. */
+export function findAnchorTarget(contentRoot: HTMLElement | null, fragment: string): Element | null {
+  return findBestAnchorTarget(contentRoot, fragment);
 }
 
 /**
@@ -83,7 +121,7 @@ export function scrollFilingFragmentIntoView(
   contentRoot: HTMLElement | null,
   scrollContainer: HTMLElement | null
 ) {
-  const target = findAnchorTarget(contentRoot, fragment);
+  const target = findBestAnchorTarget(contentRoot, fragment);
   if (!target) return;
 
   if (!scrollContainer || !scrollContainer.contains(target)) {
