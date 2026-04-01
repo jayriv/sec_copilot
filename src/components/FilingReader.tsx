@@ -136,12 +136,9 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     let working = pool.filter((el) => !isInsideLikelyToc(el, root));
     if (working.length === 0) working = pool;
 
-    const hasLower = working.some((el) => relTopInFiling(el as HTMLElement) > 0.12);
-    if (hasLower) {
-      working = working.filter((el) => {
-        if (relTopInFiling(el as HTMLElement) >= 0.05) return true;
-        return !working.some((o) => relTopInFiling(o as HTMLElement) > 0.12);
-      });
+    const deeper = working.filter((el) => relTopInFiling(el as HTMLElement) > 0.06);
+    if (deeper.length > 0) {
+      working = deeper;
     }
 
     const headings = working.filter((el) => /^H[1-6]$/i.test(el.tagName));

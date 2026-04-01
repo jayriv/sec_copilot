@@ -105,28 +105,24 @@ function collectAnchorCandidates(contentRoot: HTMLElement, fragment: string): El
 }
 
 /**
- * Prefer the real section target over the TOC row (SEC HTML often lists the same id twice).
- * If the only resolved node is a TOC row, returns null so callers can use label fallback.
+ * Prefer the real section over the TOC. SEC HTML almost always repeats the same `id` twice:
+ * first hit = TOC row, second hit = in-document anchor. When only one node exists, it is often
+ * TOC-only (body uses a different anchor) — return null so the UI can scroll by section label.
  */
 export function findBestAnchorTarget(contentRoot: HTMLElement | null, fragment: string): Element | null {
   if (!contentRoot) return null;
   const candidates = collectAnchorCandidates(contentRoot, fragment);
   if (candidates.length === 0) return null;
 
-  const nonToc = candidates.filter((c) => !isInsideLikelyToc(c, contentRoot));
-  if (nonToc.length > 0) {
-    return nonToc[nonToc.length - 1];
-  }
-
   if (candidates.length >= 2) {
-    return candidates[candidates.length - 1];
+    return candidates[1];
   }
 
-  if (isInsideLikelyToc(candidates[0], contentRoot)) {
+  const only = candidates[0];
+  if (relativeTopInRoot(only, contentRoot) < 0.22) {
     return null;
   }
-
-  return candidates[0];
+  return only;
 }
 
 /** @deprecated Use findBestAnchorTarget — kept for quick checks; may return a TOC node. */
