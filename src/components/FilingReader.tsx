@@ -105,8 +105,8 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     if (!root || !scrollContainer) return false;
 
     const normalizedLabel = label.replace(/\s+/g, " ").trim().toLowerCase();
-    const itemToken = normalizedLabel.match(/\bitem\s+\d{1,2}[a-z]?\b/i)?.[0]?.toLowerCase();
-    if (!normalizedLabel && !itemToken) return false;
+    const itemMatch = normalizedLabel.match(/\bitem\s+(\d{1,2}[a-z]?)\b/i);
+    if (!normalizedLabel && !itemMatch) return false;
 
     const verticalOffsetInContainer = (el: HTMLElement) => {
       const cr = scrollContainer.getBoundingClientRect();
@@ -120,20 +120,79 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       return (er.top - rr.top + scrollContainer.scrollTop) / Math.max(root.scrollHeight, 1);
     };
 
+    const scrollToElement = (target: HTMLElement) => {
+      const cRect = scrollContainer.getBoundingClientRect();
+      const tRect = target.getBoundingClientRect();
+      const nextTop = scrollContainer.scrollTop + (tRect.top - cRect.top) - 12;
+      scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    };
+
+    const isInsideTocHashLink = (el: Element): boolean => {
+      const a = el.closest("a[href^=\"#\"]");
+      if (!a) return false;
+      return relTopInFiling(a as HTMLElement) < 0.3;
+    };
+
+    if (itemMatch) {
+      const piece = itemMatch[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const itemRe = new RegExp(`\\bitem\\s+${piece}\\b`, "i");
+      const nodes = root.querySelectorAll(
+        "p,div,td,th,span,strong,b,h1,h2,h3,h4,h5,h6,font,li,em,i,a"
+      );
+      const candidates: HTMLElement[] = [];
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i] as HTMLElement;
+        if (el.closest("script,style")) continue;
+        if (el.children.length > 50) continue;
+        const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+        if (txt.length < 12 || txt.length > 600) continue;
+        if (!itemRe.test(txt.slice(0, 400))) continue;
+        if (isInsideTocHashLink(el)) continue;
+        if (el.tagName === "A") {
+          const href = el.getAttribute("href")?.trim() ?? "";
+          if (href.startsWith("#") && relTopInFiling(el) < 0.3) continue;
+        }
+        if (relTopInFiling(el) < 0.06) continue;
+        candidates.push(el);
+      }
+
+      if (candidates.length === 0) return false;
+
+      let working = candidates.filter((el) => !isInsideLikelyToc(el, root));
+      if (working.length === 0) working = candidates;
+
+      if (working.some((el) => relTopInFiling(el) > 0.14)) {
+        const narrowed = working.filter((el) => relTopInFiling(el) > 0.14);
+        if (narrowed.length > 0) working = narrowed;
+      }
+
+      let target = working[0];
+      let bestY = verticalOffsetInContainer(target);
+      for (let i = 1; i < working.length; i++) {
+        const el = working[i];
+        const y = verticalOffsetInContainer(el);
+        if (y > bestY) {
+          bestY = y;
+          target = el;
+        }
+      }
+      scrollToElement(target);
+      return true;
+    }
+
     const matchesText = (el: Element) => {
       const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
       if (!txt || txt.length > 400) return false;
-      if (itemToken && txt.includes(itemToken)) return true;
       return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
     };
 
     const pool = Array.from(
       root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,th,span,li,font,b,strong,a,em")
     ).filter((el) => {
+      if (isInsideTocHashLink(el)) return false;
       if (el.tagName === "A") {
         const href = el.getAttribute("href")?.trim() ?? "";
-        if (!href.startsWith("#")) return false;
-        if (relTopInFiling(el as HTMLElement) < 0.12) return false;
+        if (href.startsWith("#") && relTopInFiling(el as HTMLElement) < 0.25) return false;
       }
       return matchesText(el);
     });
@@ -143,34 +202,22 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     let working = pool.filter((el) => !isInsideLikelyToc(el, root));
     if (working.length === 0) working = pool;
 
-    const deeper = working.filter((el) => relTopInFiling(el as HTMLElement) > 0.04);
-    if (deeper.length > 0) working = deeper;
-
-    if (itemToken) {
-      const leadsWithItem = working.filter((el) =>
-        /^\s*item\s+\d{1,2}[a-z]?\b/i.test((el.textContent ?? "").trim())
-      );
-      if (leadsWithItem.length > 0) working = leadsWithItem;
+    if (working.some((el) => relTopInFiling(el as HTMLElement) > 0.1)) {
+      const narrowed = working.filter((el) => relTopInFiling(el as HTMLElement) > 0.06);
+      if (narrowed.length > 0) working = narrowed;
     }
 
-    const headings = working.filter((el) => /^H[1-6]$/i.test(el.tagName));
-    const candidates = headings.length > 0 && itemToken ? headings : working;
-
-    let target = candidates[0] as HTMLElement;
+    let target = working[0] as HTMLElement;
     let bestY = verticalOffsetInContainer(target);
-    for (let i = 1; i < candidates.length; i++) {
-      const el = candidates[i] as HTMLElement;
+    for (let i = 1; i < working.length; i++) {
+      const el = working[i] as HTMLElement;
       const y = verticalOffsetInContainer(el);
       if (y > bestY) {
         bestY = y;
         target = el;
       }
     }
-
-    const cRect = scrollContainer.getBoundingClientRect();
-    const tRect = target.getBoundingClientRect();
-    const nextTop = scrollContainer.scrollTop + (tRect.top - cRect.top) - 12;
-    scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    scrollToElement(target);
     return true;
   };
 

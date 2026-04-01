@@ -32,7 +32,7 @@ function escapeAttr(s: string): string {
 }
 
 /** Relative vertical position of `el` within `contentRoot` (0 = top, 1 = bottom). */
-function relativeTopInRoot(el: Element, contentRoot: HTMLElement): number {
+export function relativeTopInRoot(el: Element, contentRoot: HTMLElement): number {
   const rr = contentRoot.getBoundingClientRect();
   const er = el.getBoundingClientRect();
   const h = Math.max(contentRoot.scrollHeight, 1);
@@ -142,6 +142,10 @@ export function scrollFilingFragmentIntoView(
 ) {
   const target = findBestAnchorTarget(contentRoot, fragment);
   if (!target) return;
+
+  if (contentRoot && relativeTopInRoot(target, contentRoot) < 0.18) {
+    return;
+  }
 
   if (!scrollContainer || !scrollContainer.contains(target)) {
     target.scrollIntoView({ behavior: "smooth", block: "start" });
