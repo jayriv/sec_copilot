@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildFilingAnchors, COPILOT_PURPLE_SHADOW_HOVER, scrollToFilingAnchor } from "@/lib/filingAnchors";
+import { buildFilingAnchors, COPILOT_PURPLE_SHADOW_HOVER, findAnchorTarget, scrollFilingFragmentIntoView } from "@/lib/filingAnchors";
 import { useTextSelection } from "@/hooks/useTextSelection";
 
 type Props = {
@@ -19,6 +19,7 @@ function escapeHtmlText(s: string): string {
 
 export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: Props) => {
   const { selection, dismiss } = useTextSelection("filing-reader");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const contentRootRef = useRef<HTMLDivElement>(null);
   const [sanitizedHtml, setSanitizedHtml] = useState<string | null>(null);
   const [anchors, setAnchors] = useState<ReturnType<typeof buildFilingAnchors>>([]);
@@ -91,6 +92,38 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
     return rendered.join("").split("\n");
   }, [text, sourceQuote]);
 
+  const scrollByLabelFallback = (label: string): boolean => {
+    const root = contentRootRef.current;
+    const scrollContainer = scrollContainerRef.current;
+    if (!root || !scrollContainer) return false;
+
+    const normalizedLabel = label.replace(/\s+/g, " ").trim().toLowerCase();
+    const itemToken = normalizedLabel.match(/\bitem\s+\d{1,2}[a-z]?\b/i)?.[0]?.toLowerCase();
+    if (!normalizedLabel && !itemToken) return false;
+
+    const candidates = Array.from(
+      root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,font,b,strong")
+    ).filter((el) => {
+      const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      if (!txt || txt.length > 260) return false;
+      if (el.closest("a[href]")) return false; // Skip TOC links near the top.
+      if (itemToken && txt.includes(itemToken)) return true;
+      return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
+    });
+
+    if (candidates.length === 0) return false;
+
+    const threshold = root.scrollHeight * 0.2;
+    const deeper = candidates.filter((el) => (el as HTMLElement).offsetTop > threshold);
+    const target = (deeper.length > 0 ? deeper[0] : candidates[candidates.length - 1]) as HTMLElement;
+
+    const cRect = scrollContainer.getBoundingClientRect();
+    const tRect = target.getBoundingClientRect();
+    const nextTop = scrollContainer.scrollTop + (tRect.top - cRect.top) - 12;
+    scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    return true;
+  };
+
   return (
     <section className="group/filing relative flex h-full min-h-0 flex-col rounded-2xl border border-violet-100/80 bg-white p-5 shadow-[0_6px_20px_-6px_rgba(54,1,63,0.26)] ring-1 ring-slate-200/80 transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_14px_44px_-14px_rgba(54,1,63,0.24)]">
       {showHtml && anchors.length > 0 && (
@@ -101,17 +134,27 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
               className="ml-2 rounded-lg border border-violet-200/90 bg-white px-2 py-1.5 text-xs text-slate-800 shadow-[0_4px_14px_-4px_rgba(54,1,63,0.22)] outline-none transition hover:shadow-[0_6px_18px_-4px_rgba(54,1,63,0.3)] focus:border-violet-400 focus:ring-2 focus:ring-violet-300/50"
               defaultValue=""
               onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                scrollToFilingAnchor(id, contentRootRef.current ?? document.body);
+                const idx = Number(e.target.value);
+                if (!Number.isFinite(idx) || idx < 0) return;
+                const anchor = anchors[idx];
+                if (!anchor) return;
+                requestAnimationFrame(() => {
+                  const root = contentRootRef.current;
+                  const scroller = scrollContainerRef.current;
+                  if (root && findAnchorTarget(root, anchor.id)) {
+                    scrollFilingFragmentIntoView(anchor.id, root, scroller);
+                    return;
+                  }
+                  scrollByLabelFallback(anchor.label);
+                });
                 e.currentTarget.value = "";
               }}
             >
               <option value="" disabled>
                 Select…
               </option>
-              {anchors.map((a) => (
-                <option key={`${a.source}-${a.id}`} value={a.id}>
+              {anchors.map((a, idx) => (
+                <option key={`${a.source}-${a.id}`} value={String(idx)}>
                   {`${"  ".repeat(Math.max(0, a.level - 1))}${a.label}`}
                 </option>
               ))}
@@ -121,7 +164,9 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
             <button
               type="button"
               className="rounded-lg border border-violet-200/90 bg-white px-3 py-1.5 text-xs font-medium text-violet-950 shadow-[0_4px_12px_-4px_rgba(54,1,63,0.2)] transition hover:bg-violet-50"
-              onClick={() => document.getElementById("source-quote-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+              onClick={() =>
+                scrollFilingFragmentIntoView("source-quote-anchor", contentRootRef.current, scrollContainerRef.current)
+              }
             >
               Jump to quote
             </button>
@@ -130,7 +175,40 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       )}
       <div
         id="filing-reader"
+        ref={scrollContainerRef}
         className="relative min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed text-slate-800"
+        onClick={(e) => {
+          const t = e.target as HTMLElement | null;
+          const a = t?.closest?.("a");
+          if (!a) return;
+          const href = a.getAttribute("href")?.trim();
+          if (!href || href.startsWith("javascript:") || href.startsWith("mailto:")) return;
+
+          let fragment = "";
+          if (href.startsWith("#")) {
+            fragment = href.slice(1);
+          } else if (href.includes("#")) {
+            try {
+              fragment = new URL(href, window.location.href).hash.slice(1);
+            } catch {
+              return;
+            }
+          }
+          if (!fragment) return;
+
+          const root = contentRootRef.current;
+          if (!root) return;
+          const hasTarget = findAnchorTarget(root, fragment);
+          if (hasTarget) {
+            e.preventDefault();
+            scrollFilingFragmentIntoView(fragment, root, scrollContainerRef.current);
+            return;
+          }
+          const label = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+          if (label && scrollByLabelFallback(label)) {
+            e.preventDefault();
+          }
+        }}
       >
         {showHtml && sanitizedHtml && (
           <div

@@ -31,12 +31,12 @@ function escapeAttr(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/** Prefer id match, then legacy `<a name="…">` / `[name=…]`. */
-export function scrollToFilingAnchor(fragment: string, root: Document | HTMLElement | null = document) {
+/** Resolve a fragment to an element inside the filing HTML root (not the scroll container). */
+export function findAnchorTarget(contentRoot: HTMLElement | null, fragment: string): Element | null {
   const raw = fragment.replace(/^#/, "").trim();
-  if (!raw) return;
+  if (!raw) return null;
   const id = decodeFragment(raw);
-  const scope: Document | HTMLElement = root ?? document;
+  const scope: Document | HTMLElement = contentRoot ?? document.documentElement;
 
   const tryById = (fid: string) => {
     try {
@@ -53,7 +53,47 @@ export function scrollToFilingAnchor(fragment: string, root: Document | HTMLElem
     if (!el) el = scope.querySelector(`[name="${escapeAttr(raw)}"]`);
   }
 
-  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!el && contentRoot?.ownerDocument) {
+    const byId = contentRoot.ownerDocument.getElementById(id);
+    if (byId && contentRoot.contains(byId)) el = byId;
+  }
+
+  if (!el && contentRoot) {
+    const lower = id.toLowerCase();
+    for (const node of contentRoot.querySelectorAll("[id]")) {
+      if (node.id.toLowerCase() === lower) {
+        el = node;
+        break;
+      }
+    }
+  }
+
+  return el;
+}
+
+/**
+ * Scroll so the target sits near the top of the filing scroll panel.
+ * `scrollIntoView` often fails when the only scrollable ancestor is an inner `overflow-y-auto`
+ * div (the window does not move, so nothing appears to happen).
+ */
+export function scrollFilingFragmentIntoView(
+  fragment: string,
+  contentRoot: HTMLElement | null,
+  scrollContainer: HTMLElement | null
+) {
+  const target = findAnchorTarget(contentRoot, fragment);
+  if (!target) return;
+
+  if (!scrollContainer || !scrollContainer.contains(target)) {
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const margin = 12;
+  const cRect = scrollContainer.getBoundingClientRect();
+  const tRect = target.getBoundingClientRect();
+  const nextTop = scrollContainer.scrollTop + (tRect.top - cRect.top) - margin;
+  scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
 }
 
 /**
