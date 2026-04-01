@@ -31,12 +31,27 @@ function escapeAttr(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/** SEC filings often duplicate anchors: TOC row + real section. Tables with many `#` links are usually the TOC. */
+/** Relative vertical position of `el` within `contentRoot` (0 = top, 1 = bottom). */
+function relativeTopInRoot(el: Element, contentRoot: HTMLElement): number {
+  const rr = contentRoot.getBoundingClientRect();
+  const er = el.getBoundingClientRect();
+  const h = Math.max(contentRoot.scrollHeight, 1);
+  return (er.top - rr.top + contentRoot.scrollTop) / h;
+}
+
+/**
+ * SEC filings duplicate anchors (TOC vs body). Layout is often nested tables; a table with many `#`
+ * links can be the real document body — only treat as TOC when the table sits in the upper part
+ * of the filing and has several in-doc links.
+ */
 export function isInsideLikelyToc(el: Element, contentRoot: HTMLElement): boolean {
   const table = el.closest("table");
   if (!table || !contentRoot.contains(table)) return false;
   const hashLinks = table.querySelectorAll('a[href^="#"]');
-  return hashLinks.length >= 4;
+  if (hashLinks.length < 3) return false;
+  const tableTop = relativeTopInRoot(table, contentRoot);
+  if (tableTop > 0.42) return false;
+  return true;
 }
 
 function sortElementsInTreeOrder(nodes: Element[]): Element[] {
@@ -91,7 +106,7 @@ function collectAnchorCandidates(contentRoot: HTMLElement, fragment: string): El
 
 /**
  * Prefer the real section target over the TOC row (SEC HTML often lists the same id twice).
- * Returns null if the only matches are in the TOC so callers can fall back to label search.
+ * If the only resolved node is a TOC row, returns null so callers can use label fallback.
  */
 export function findBestAnchorTarget(contentRoot: HTMLElement | null, fragment: string): Element | null {
   if (!contentRoot) return null;
@@ -103,7 +118,15 @@ export function findBestAnchorTarget(contentRoot: HTMLElement | null, fragment: 
     return nonToc[nonToc.length - 1];
   }
 
-  return null;
+  if (candidates.length >= 2) {
+    return candidates[candidates.length - 1];
+  }
+
+  if (isInsideLikelyToc(candidates[0], contentRoot)) {
+    return null;
+  }
+
+  return candidates[0];
 }
 
 /** @deprecated Use findBestAnchorTarget — kept for quick checks; may return a TOC node. */

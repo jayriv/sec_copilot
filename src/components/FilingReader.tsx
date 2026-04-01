@@ -116,17 +116,36 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
 
     const matchesText = (el: Element) => {
       const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-      if (!txt || txt.length > 260) return false;
+      if (!txt || txt.length > 320) return false;
       if (itemToken && txt.includes(itemToken)) return true;
       return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
     };
 
-    const pool = Array.from(root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,font,b,strong")).filter(matchesText);
+    const pool = Array.from(
+      root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,th,span,li,font,b,strong")
+    ).filter(matchesText);
 
     if (pool.length === 0) return false;
 
-    const nonToc = pool.filter((el) => !isInsideLikelyToc(el, root));
-    const candidates = nonToc.length > 0 ? nonToc : pool;
+    const relTopInFiling = (el: HTMLElement) => {
+      const rr = root.getBoundingClientRect();
+      const er = el.getBoundingClientRect();
+      return (er.top - rr.top + scrollContainer.scrollTop) / Math.max(root.scrollHeight, 1);
+    };
+
+    let working = pool.filter((el) => !isInsideLikelyToc(el, root));
+    if (working.length === 0) working = pool;
+
+    const hasLower = working.some((el) => relTopInFiling(el as HTMLElement) > 0.12);
+    if (hasLower) {
+      working = working.filter((el) => {
+        if (relTopInFiling(el as HTMLElement) >= 0.05) return true;
+        return !working.some((o) => relTopInFiling(o as HTMLElement) > 0.12);
+      });
+    }
+
+    const headings = working.filter((el) => /^H[1-6]$/i.test(el.tagName));
+    const candidates = headings.length > 0 && itemToken ? headings : working;
 
     let target = candidates[0] as HTMLElement;
     let bestY = verticalOffsetInContainer(target);
