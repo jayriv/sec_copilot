@@ -114,31 +114,43 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
       return scrollContainer.scrollTop + (er.top - cr.top);
     };
 
-    const matchesText = (el: Element) => {
-      const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-      if (!txt || txt.length > 320) return false;
-      if (itemToken && txt.includes(itemToken)) return true;
-      return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
-    };
-
-    const pool = Array.from(
-      root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,th,span,li,font,b,strong")
-    ).filter(matchesText);
-
-    if (pool.length === 0) return false;
-
     const relTopInFiling = (el: HTMLElement) => {
       const rr = root.getBoundingClientRect();
       const er = el.getBoundingClientRect();
       return (er.top - rr.top + scrollContainer.scrollTop) / Math.max(root.scrollHeight, 1);
     };
 
+    const matchesText = (el: Element) => {
+      const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+      if (!txt || txt.length > 400) return false;
+      if (itemToken && txt.includes(itemToken)) return true;
+      return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
+    };
+
+    const pool = Array.from(
+      root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,td,th,span,li,font,b,strong,a,em")
+    ).filter((el) => {
+      if (el.tagName === "A") {
+        const href = el.getAttribute("href")?.trim() ?? "";
+        if (!href.startsWith("#")) return false;
+        if (relTopInFiling(el as HTMLElement) < 0.12) return false;
+      }
+      return matchesText(el);
+    });
+
+    if (pool.length === 0) return false;
+
     let working = pool.filter((el) => !isInsideLikelyToc(el, root));
     if (working.length === 0) working = pool;
 
-    const deeper = working.filter((el) => relTopInFiling(el as HTMLElement) > 0.06);
-    if (deeper.length > 0) {
-      working = deeper;
+    const deeper = working.filter((el) => relTopInFiling(el as HTMLElement) > 0.04);
+    if (deeper.length > 0) working = deeper;
+
+    if (itemToken) {
+      const leadsWithItem = working.filter((el) =>
+        /^\s*item\s+\d{1,2}[a-z]?\b/i.test((el.textContent ?? "").trim())
+      );
+      if (leadsWithItem.length > 0) working = leadsWithItem;
     }
 
     const headings = working.filter((el) => /^H[1-6]$/i.test(el.tagName));
@@ -179,11 +191,9 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
                 requestAnimationFrame(() => {
                   const root = contentRootRef.current;
                   const scroller = scrollContainerRef.current;
-                  if (root && findBestAnchorTarget(root, anchor.id)) {
-                    scrollFilingFragmentIntoView(anchor.id, root, scroller);
-                    return;
-                  }
-                  scrollByLabelFallback(anchor.label);
+                  if (!root || !scroller) return;
+                  if (scrollByLabelFallback(anchor.label)) return;
+                  scrollFilingFragmentIntoView(anchor.id, root, scroller);
                 });
                 e.currentTarget.value = "";
               }}
@@ -236,15 +246,14 @@ export const FilingReader = ({ text, html = "", sourceQuote, onAskSelection }: P
 
           const root = contentRootRef.current;
           if (!root) return;
-          const hasTarget = findBestAnchorTarget(root, fragment);
-          if (hasTarget) {
-            e.preventDefault();
-            scrollFilingFragmentIntoView(fragment, root, scrollContainerRef.current);
-            return;
-          }
           const label = (a.textContent ?? "").replace(/\s+/g, " ").trim();
           if (label && scrollByLabelFallback(label)) {
             e.preventDefault();
+            return;
+          }
+          if (findBestAnchorTarget(root, fragment)) {
+            e.preventDefault();
+            scrollFilingFragmentIntoView(fragment, root, scrollContainerRef.current);
           }
         }}
       >
