@@ -193,7 +193,7 @@ function sortElementsInTreeOrder(nodes: Element[]): Element[] {
 }
 
 /** Collect all elements matching a fragment (ids often duplicated: TOC vs body). */
-function collectAnchorCandidates(contentRoot: HTMLElement, fragment: string): Element[] {
+export function collectAnchorCandidates(contentRoot: HTMLElement, fragment: string): Element[] {
   const raw = fragment.replace(/^#/, "").trim();
   if (!raw) return [];
   const id = decodeFragment(raw);

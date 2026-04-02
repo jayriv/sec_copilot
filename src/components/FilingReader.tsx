@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import {
   buildFilingAnchors,
+  collectAnchorCandidates,
   COPILOT_PURPLE_SHADOW_HOVER,
   findBestAnchorTarget,
   isInsideLikelyToc,
@@ -243,7 +244,10 @@ export const FilingReader = ({
     const matchesText = (el: Element) => {
       const txt = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
       if (!txt || txt.length > 400) return false;
-      return normalizedLabel.length > 12 && txt.includes(normalizedLabel.slice(0, 48));
+      if (normalizedLabel.length < 4) return false;
+      const needle =
+        normalizedLabel.length <= 48 ? normalizedLabel : normalizedLabel.slice(0, 48);
+      return txt.includes(needle);
     };
 
     const pool = Array.from(
@@ -281,19 +285,36 @@ export const FilingReader = ({
   };
 
   const navigateToSection = async (anchor: { id: string; label: string }): Promise<boolean> => {
-    if (scrollByLabelFallback(anchor.label)) return true;
     const root = contentRootRef.current;
     const scroller = scrollContainerRef.current;
-    if (root && scroller && findBestAnchorTarget(root, anchor.id)) {
+    if (!root || !scroller) return false;
+
+    // Fragment / id first: label heuristics used to run first and could "succeed" on the wrong
+    // nodes (e.g. Item regex) and skip real #anchor scrolling entirely.
+    const candidates = collectAnchorCandidates(root, anchor.id);
+    const canScrollByFragment =
+      candidates.length >= 2 ||
+      (candidates.length === 1 && !isInsideLikelyToc(candidates[0], root));
+
+    if (canScrollByFragment && findBestAnchorTarget(root, anchor.id)) {
       scrollFilingFragmentIntoView(anchor.id, root, scroller);
       return true;
     }
+
     const sectionHtml = await fetchSectionHtml(anchor.id);
     if (sectionHtml) {
       pendingScrollIdRef.current = anchor.id;
       setFragmentOverride(sectionHtml);
       return true;
     }
+
+    if (scrollByLabelFallback(anchor.label)) return true;
+
+    if (candidates.length === 1 && findBestAnchorTarget(root, anchor.id)) {
+      scrollFilingFragmentIntoView(anchor.id, root, scroller);
+      return true;
+    }
+
     return false;
   };
 
