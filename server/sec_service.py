@@ -201,6 +201,7 @@ def _wants_additional_filing(question: str) -> bool:
         "comparison",
         "versus",
         " vs ",
+        " vs. ",
         "relative to",
         "prior year",
         "last year",
@@ -216,8 +217,22 @@ def _wants_additional_filing(question: str) -> bool:
         "last 10",
         "year over year",
         "yoy",
+        "another year",
+        "another filing",
+        "different year",
+        "different filing",
+        "other year",
+        "other filing",
+        "second filing",
+        "cross-year",
+        "cross year",
     )
     return any(p in lowered for p in phrases)
+
+
+def _explicit_calendar_year_in_question(question: str) -> str | None:
+    m = re.search(r"\b(19|20)\d{2}\b", question)
+    return m.group(0) if m else None
 
 
 def _extract_comparison_year_smart(question: str, display_year: str, same_form: bool) -> str:
@@ -237,6 +252,14 @@ def _extract_comparison_year_smart(question: str, display_year: str, same_form: 
             return str(int(display_year) - 1)
         except ValueError:
             return display_year
+    # "Compare …" without naming a year → prior fiscal year vs the filing on screen
+    if same_form and not year_match and re.search(
+        r"\b(compare|comparison|versus|yoy|year over year)\b|\bvs\.?\b", lowered
+    ):
+        try:
+            return str(int(display_year) - 1)
+        except ValueError:
+            return display_year
     return display_year
 
 
@@ -250,6 +273,7 @@ def maybe_get_comparison_context(question: str, ticker: str, year: str, active_f
     same_form = _normalize_form_label(comparison_raw) == normalized_active
 
     comparison_year = _extract_comparison_year_smart(question, year, same_form=same_form)
+    explicit_year = _explicit_calendar_year_in_question(question)
 
     try:
         active_y = int(year)
@@ -257,7 +281,10 @@ def maybe_get_comparison_context(question: str, ticker: str, year: str, active_f
     except ValueError:
         return ""
 
-    if same_form and comp_y >= active_y:
+    # If the user did not name a calendar year, "compare" often meant prior year; clamping
+    # future years to active_y-1 made sense. If they *did* name a year (e.g. 2026 vs 2024 on
+    # screen), fetch that filing — do not rewrite 2026 into 2023.
+    if same_form and comp_y >= active_y and explicit_year is None:
         comparison_year = str(active_y - 1)
         try:
             comp_y = int(comparison_year)
@@ -272,5 +299,6 @@ def maybe_get_comparison_context(question: str, ticker: str, year: str, active_f
     except Exception:
         return ""
 
+    compare_chars = _int_env("SEC_COPILOT_COMPARISON_TEXT_CHARS", 60_000)
     label = f"Additional SEC filing context ({comparison_form}, filing_date calendar year ~{comparison_year})"
-    return f"{label}:\n{bundle.text[:25000]}"
+    return f"{label}:\n{bundle.text[:compare_chars]}"
