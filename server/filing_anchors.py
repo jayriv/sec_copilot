@@ -11,6 +11,9 @@ from bs4 import BeautifulSoup, Tag
 FilingAnchorSource = Literal["toc", "heading", "target", "item"]
 
 ITEM_RE = re.compile(r"^\s*Item\s+\d{1,2}[A-Za-z]?\b", re.I)
+_BARE_ITEM_TOC = re.compile(r"^\s*item\s+\d{1,2}[a-z]?\b", re.I)
+_ITEM_HEAD_LEAD = re.compile(r"^Item\s+\d{1,2}[A-Za-z]?\b\s*[.:\u2014\u00b7\-]*\s*", re.I)
+_ITEM_NEXT_BREAK = re.compile(r"\bItem\s+\d{1,2}\b", re.I)
 
 
 def decode_fragment(raw: str) -> str:
@@ -25,6 +28,69 @@ def slugify_heading(label: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", s)
     base = re.sub(r"-+", "-", base).strip("-")
     return base or "section"
+
+
+def _is_bare_item_toc_label(label: str) -> bool:
+    t = re.sub(r"\s+", " ", label).strip()
+    if not _BARE_ITEM_TOC.match(t):
+        return False
+    after = _BARE_ITEM_TOC.sub("", t, count=1)
+    after = re.sub(r"^[\s.:;\u2014\u00b7\-]+", "", after, flags=re.I).strip()
+    return len(after) < 3
+
+
+def _resolve_fragment_target(body: Tag, frag: str) -> Tag | None:
+    el = body.find(id=frag)
+    if el is not None:
+        return el
+    for node in body.find_all("a", attrs={"name": True}):
+        if (node.get("name") or "").strip() == frag:
+            return node
+    lower = frag.lower()
+    for node in body.find_all(id=True):
+        if str(node.get("id", "")).lower() == lower:
+            return node
+    return None
+
+
+def _parse_item_heading_line(snippet: str) -> str | None:
+    s = re.sub(r"\s+", " ", snippet).strip()
+    mpos = re.search(r"\bItem\s+\d{1,2}[A-Za-z]?\b", s, re.I)
+    if not mpos:
+        return None
+    from_ = s[mpos.start() :]
+    m = _ITEM_HEAD_LEAD.match(from_)
+    if not m:
+        return None
+    rest = from_[m.end() :].strip()
+    nb = _ITEM_NEXT_BREAK.search(rest)
+    if nb and nb.start() >= 0:
+        rest = rest[: nb.start()].strip()
+    rest = re.sub(r"\s*\.{3,}\s*$", "", rest).strip()
+    prefix = re.sub(r"\s+", " ", m.group(0)).strip()
+    head = re.sub(r"[.:]\s*$", "", prefix).strip()
+    if len(rest) >= 2 and re.search(r"[A-Za-z]{2,}", rest):
+        combined = f"{head}. {rest}"
+        combined = re.sub(r"\s+\.", ".", combined)
+        return combined[:220]
+    return head[:220]
+
+
+def _item_heading_label_from_fragment_target(body: Tag, frag: str) -> str | None:
+    el = _resolve_fragment_target(body, frag)
+    if el is None:
+        return None
+    row = el.find_parent("tr")
+    cell = el.find_parent(["td", "th"])
+    parts: list[str] = []
+    if row is not None and hasattr(row, "get_text"):
+        parts.append(row.get_text(" ", strip=True))
+    elif cell is not None and hasattr(cell, "get_text"):
+        parts.append(cell.get_text(" ", strip=True))
+    elif hasattr(el, "get_text"):
+        parts.append(el.get_text(" ", strip=True))
+    snippet = re.sub(r"\s+", " ", " ".join(parts)).strip()[:1200]
+    return _parse_item_heading_line(snippet)
 
 
 def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str, Any]]:
@@ -66,6 +132,10 @@ def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str
         if not frag:
             continue
         label = re.sub(r"\s+", " ", (a.get_text() or "")).strip() or frag
+        if _is_bare_item_toc_label(label):
+            rich = _item_heading_label_from_fragment_target(body, frag)
+            if rich:
+                label = rich
         push(frag, label, 2, "toc")
 
     slug_seen: dict[str, int] = {}

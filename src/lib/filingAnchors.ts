@@ -9,6 +9,65 @@ export type FilingAnchor = {
 
 const ITEM_RE = /^\s*Item\s+\d{1,2}[A-Z]?\b/i;
 
+/** TOC link text is often only "Item 1." — resolve title from the in-document anchor row. */
+function isBareItemTocLabel(label: string): boolean {
+  const t = label.replace(/\s+/g, " ").trim();
+  if (!/^\s*item\s+\d{1,2}[a-z]?\b/i.test(t)) return false;
+  const after = t
+    .replace(/^\s*item\s+\d{1,2}[a-z]?\b/i, "")
+    .replace(/^[\s.:;\u2014\u00b7\-]+/i, "")
+    .trim();
+  return after.length < 3;
+}
+
+function resolveFragmentTarget(body: HTMLElement, frag: string): Element | null {
+  try {
+    const byId = body.querySelector(`#${CSS.escape(frag)}`);
+    if (byId) return byId;
+  } catch {
+    /* invalid id selector */
+  }
+  const byName = body.querySelector(`[name="${escapeAttr(frag)}"]`);
+  if (byName) return byName;
+  const lower = frag.toLowerCase();
+  for (const node of body.querySelectorAll("[id]")) {
+    if (node.id.toLowerCase() === lower) return node;
+  }
+  return null;
+}
+
+/** Parse "Item 1. Business …" from a short text blob (table row / cell). */
+function parseItemHeadingLine(snippet: string): string | null {
+  const s = snippet.replace(/\s+/g, " ").trim();
+  const idx = s.search(/\bItem\s+\d{1,2}[A-Za-z]?\b/i);
+  if (idx < 0) return null;
+  const from = s.slice(idx);
+  const m = from.match(/^Item\s+\d{1,2}[A-Za-z]?\b\s*[.:\u2014\u00b7\-]*\s*/i);
+  if (!m) return null;
+  let rest = from.slice(m[0].length).trim();
+  const stop = rest.search(/\bItem\s+\d{1,2}\b/i);
+  if (stop >= 0) rest = rest.slice(0, stop).trim();
+  rest = rest.replace(/\s*\.{3,}\s*$/, "").trim();
+  const prefix = from.slice(0, m[0].length).replace(/\s+/g, " ").trim();
+  const head = prefix.replace(/[.:]\s*$/, "").trim();
+  if (rest.length >= 2 && /[A-Za-z]{2,}/.test(rest)) {
+    return `${head}. ${rest}`.replace(/\s+\./g, ".").slice(0, 220);
+  }
+  return head.slice(0, 220);
+}
+
+function itemHeadingLabelFromFragmentTarget(body: HTMLElement, frag: string): string | null {
+  const el = resolveFragmentTarget(body, frag);
+  if (!el) return null;
+  const row = el.closest("tr");
+  const cell = el.closest("td,th");
+  const snippet = (row?.textContent ?? cell?.textContent ?? el.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1200);
+  return parseItemHeadingLine(snippet);
+}
+
 function slugifyHeading(input: string): string {
   const base = input
     .trim()
@@ -186,7 +245,11 @@ export function buildFilingAnchors(doc: Document): FilingAnchor[] {
     if (!href || href === "#") return;
     const frag = decodeFragment(href.slice(1));
     if (!frag) return;
-    const label = (a.textContent ?? "").replace(/\s+/g, " ").trim() || frag;
+    let label = (a.textContent ?? "").replace(/\s+/g, " ").trim() || frag;
+    if (isBareItemTocLabel(label)) {
+      const rich = itemHeadingLabelFromFragmentTarget(body, frag);
+      if (rich) label = rich;
+    }
     push(frag, label, 2, "toc");
   });
 
