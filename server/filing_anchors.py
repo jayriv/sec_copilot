@@ -90,7 +90,77 @@ def _item_heading_label_from_fragment_target(body: Tag, frag: str) -> str | None
     elif hasattr(el, "get_text"):
         parts.append(el.get_text(" ", strip=True))
     snippet = re.sub(r"\s+", " ", " ".join(parts)).strip()[:1200]
-    return _parse_item_heading_line(snippet)
+    from_row = _parse_item_heading_line(snippet)
+    if from_row and len(from_row) > 12:
+        return from_row
+    if hasattr(el, "get_text"):
+        el_txt = re.sub(r"\s+", " ", el.get_text(" ", strip=True))[:800]
+        from_el = _parse_item_heading_line(el_txt)
+        return from_row or from_el
+    return from_row
+
+
+_ITEM_KEY_RE = re.compile(r"\bItem\s+(\d{1,2}[A-Za-z]?)\b", re.I)
+
+
+def _extract_item_key_from_label(label: str) -> str | None:
+    m = _ITEM_KEY_RE.search(label)
+    if not m:
+        return None
+    return m.group(1).upper()
+
+
+def _parse_item_sort_rank(key: str) -> int:
+    m = re.match(r"^(\d+)([A-Z]?)$", key, re.I)
+    if not m:
+        return 999_999
+    num = int(m.group(1))
+    suf = (m.group(2) or "").upper()
+    sub = ord(suf) - 64 if suf else 0
+    return num * 100 + sub
+
+
+def _prefer_richer_item_label(a: str, b: str) -> bool:
+    na = re.sub(r"\s+", " ", a).strip()
+    nb = re.sub(r"\s+", " ", b).strip()
+    if len(na) != len(nb):
+        return len(na) > len(nb)
+    a_lower = bool(re.search(r"[a-z]", na))
+    b_lower = bool(re.search(r"[a-z]", nb))
+    if a_lower and not b_lower:
+        return True
+    if not a_lower and b_lower:
+        return False
+    return na.casefold() < nb.casefold()
+
+
+def _merge_item_anchor_group(group: list[dict[str, Any]]) -> dict[str, Any]:
+    best = group[0]
+    for g in group[1:]:
+        if _prefer_richer_item_label(g["label"], best["label"]):
+            best = g
+    return best
+
+
+def _dedupe_and_sort_item_anchors(anchors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    non_items: list[dict[str, Any]] = []
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for a in anchors:
+        key = _extract_item_key_from_label(a["label"])
+        if key:
+            buckets.setdefault(key, []).append(a)
+        else:
+            non_items.append(a)
+    merged_items: list[dict[str, Any]] = []
+    for group in buckets.values():
+        merged_items.append(_merge_item_anchor_group(group))
+
+    def _sort_key(x: dict[str, Any]) -> int:
+        k = _extract_item_key_from_label(x["label"])
+        return _parse_item_sort_rank(k) if k else 999_999
+
+    merged_items.sort(key=_sort_key)
+    return non_items + merged_items
 
 
 def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str, Any]]:
@@ -204,7 +274,8 @@ def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str
         final_id = str(el.get("id") or new_id)
         push(final_id, label, 1, "item")
 
-    return anchors[:max_anchors]
+    merged = _dedupe_and_sort_item_anchors(anchors)
+    return merged[:max_anchors]
 
 
 def extract_fragment_html(raw_html: str, fragment: str, max_chars: int) -> str | None:

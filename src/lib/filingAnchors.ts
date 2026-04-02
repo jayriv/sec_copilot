@@ -65,7 +65,77 @@ function itemHeadingLabelFromFragmentTarget(body: HTMLElement, frag: string): st
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 1200);
-  return parseItemHeadingLine(snippet);
+  const fromRow = parseItemHeadingLine(snippet);
+  if (fromRow && fromRow.length > 12) return fromRow;
+  const fromEl = parseItemHeadingLine((el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 800));
+  return fromRow ?? fromEl;
+}
+
+/** "1", "1A", "14" from labels like "Item 14." or "ITEM 1A. RISK FACTORS". */
+function extractItemKeyFromLabel(label: string): string | null {
+  const m = label.match(/\bItem\s+(\d{1,2}[A-Za-z]?)\b/i);
+  if (!m) return null;
+  return m[1].toUpperCase();
+}
+
+function parseItemSortRank(key: string): number {
+  const m = key.match(/^(\d+)([A-Z]?)$/i);
+  if (!m) return 999_999;
+  const num = parseInt(m[1], 10);
+  const suf = (m[2] || "").toUpperCase();
+  const sub = suf ? suf.charCodeAt(0) - 64 : 0;
+  return num * 100 + sub;
+}
+
+function preferRicherItemLabel(a: string, b: string): boolean {
+  const na = a.replace(/\s+/g, " ").trim();
+  const nb = b.replace(/\s+/g, " ").trim();
+  if (na.length !== nb.length) return na.length > nb.length;
+  const aLower = /[a-z]/.test(na);
+  const bLower = /[a-z]/.test(nb);
+  if (aLower && !bLower) return true;
+  if (!aLower && bLower) return false;
+  return na.localeCompare(nb, undefined, { sensitivity: "base" }) < 0;
+}
+
+function mergeItemAnchorGroup(group: FilingAnchor[]): FilingAnchor {
+  let best = group[0];
+  for (const g of group.slice(1)) {
+    if (preferRicherItemLabel(g.label, best.label)) best = g;
+  }
+  return best;
+}
+
+/**
+ * SEC HTML lists the same Item many times (TOC + parts, repeated rows). Merge by Item number
+ * and sort 1, 1A, … 7, … so the dropdown is not Part III–first with tripled rows.
+ */
+function dedupeAndSortItemAnchors(anchors: FilingAnchor[]): FilingAnchor[] {
+  const nonItems: FilingAnchor[] = [];
+  const buckets = new Map<string, FilingAnchor[]>();
+
+  for (const a of anchors) {
+    const key = extractItemKeyFromLabel(a.label);
+    if (key) {
+      const arr = buckets.get(key) ?? [];
+      arr.push(a);
+      buckets.set(key, arr);
+    } else {
+      nonItems.push(a);
+    }
+  }
+
+  const mergedItems: FilingAnchor[] = [];
+  for (const group of buckets.values()) {
+    mergedItems.push(mergeItemAnchorGroup(group));
+  }
+  mergedItems.sort((x, y) => {
+    const kx = extractItemKeyFromLabel(x.label)!;
+    const ky = extractItemKeyFromLabel(y.label)!;
+    return parseItemSortRank(kx) - parseItemSortRank(ky);
+  });
+
+  return [...nonItems, ...mergedItems];
 }
 
 function slugifyHeading(input: string): string {
@@ -304,5 +374,6 @@ export function buildFilingAnchors(doc: Document): FilingAnchor[] {
     push(finalId, label, 1, "item");
   });
 
-  return anchors.slice(0, 320);
+  const merged = dedupeAndSortItemAnchors(anchors);
+  return merged.slice(0, 320);
 }
