@@ -6,6 +6,8 @@ import { RecentResearch } from "@/components/RecentResearch";
 import { TickerSwitcher } from "@/components/TickerSwitcher";
 import { useSession } from "@/context/SessionContext";
 import { loadRecents } from "@/lib/storage";
+import { LlmModelPicker } from "@/components/LlmModelPicker";
+import { DEFAULT_LLM_MODEL, isKnownLlmModel, LLM_MODEL_STORAGE_KEY } from "@/lib/llmCatalog";
 import { ChatMessage, FilingAnchor, FilingKey } from "@/lib/types";
 
 type FilingResponse = {
@@ -54,6 +56,24 @@ export default function HomePage() {
   const [isCachedFiling, setIsCachedFiling] = useState(false);
   const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
   const [chatDocked, setChatDocked] = useState(false);
+  const [chatModel, setChatModel] = useState(DEFAULT_LLM_MODEL);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(LLM_MODEL_STORAGE_KEY);
+      if (stored && isKnownLlmModel(stored)) setChatModel(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LLM_MODEL_STORAGE_KEY, chatModel);
+    } catch {
+      /* ignore */
+    }
+  }, [chatModel]);
 
   useEffect(() => {
     setRecents(loadRecents());
@@ -138,7 +158,8 @@ export default function HomePage() {
       form_type: filingKey.formType,
       question: prompt,
       current_context: documentText,
-      selected_text: selectedText
+      selected_text: selectedText,
+      llm_model: chatModel
     };
     setIsAsking(true);
     try {
@@ -211,7 +232,10 @@ export default function HomePage() {
             Session-aware filing research with comparison-ready Q&A.
           </p>
         </div>
-        <TickerSwitcher initial={filingKey} isLoading={isSwitchingTicker} onSwitch={onSwitchTicker} />
+        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-end sm:gap-4">
+          <LlmModelPicker value={chatModel} onChange={setChatModel} />
+          <TickerSwitcher initial={filingKey} isLoading={isSwitchingTicker} onSwitch={onSwitchTicker} />
+        </div>
       </header>
       {sessionSavedMessage && (
         <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/95 px-5 py-2 text-sm text-emerald-900">

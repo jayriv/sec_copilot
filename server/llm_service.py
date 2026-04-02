@@ -23,8 +23,9 @@ def ask_llm(
     current_context: str,
     additional_context: str = "",
     selected_text: str = "",
+    llm_model: str | None = None,
 ) -> tuple[str, str]:
-    model = os.getenv("LITELLM_MODEL", "gpt-4")
+    model = (llm_model or "").strip() or os.getenv("LITELLM_MODEL", "openai/gpt-4").strip()
 
     current_max = int(os.getenv("COPILOT_CURRENT_CONTEXT_CHARS", "80000"))
     additional_max = int(os.getenv("COPILOT_ADDITIONAL_CONTEXT_CHARS", "60000"))

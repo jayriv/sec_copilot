@@ -84,6 +84,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             current_context=payload.current_context,
             additional_context=additional_context,
             selected_text=payload.selected_text or "",
+            llm_model=payload.llm_model,
         )
         return ChatResponse(answer=answer, source_quote=source_quote)
     except Exception as exc:

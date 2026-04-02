@@ -20,6 +20,8 @@ class ChatRequest(FilingRequest):
     question: str
     current_context: str
     selected_text: str | None = None
+    """LiteLLM model id, e.g. openai/gpt-4, anthropic/claude-3-5-sonnet-20241022."""
+    llm_model: str | None = None
 
 
 class FilingResponse(BaseModel):
