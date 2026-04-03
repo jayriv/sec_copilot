@@ -13,7 +13,7 @@ import {
   DEFAULT_CURRENT_CONTEXT_MAX,
   loadAdditionalContextMax,
   loadCurrentContextMax,
-  loadSystemPromptOverride,
+  getEffectiveSystemPromptForRequest,
   persistAdditionalContextMax,
   persistCurrentContextMax
 } from "@/lib/copilotSettings";
@@ -202,7 +202,7 @@ export default function HomePage() {
     setErrorScope(undefined);
     addMessage({ id: crypto.randomUUID(), role: "user", content: prompt });
     setLastPrompt(prompt);
-    const sp = loadSystemPromptOverride().trim();
+    const sp = getEffectiveSystemPromptForRequest();
     const payload = {
       ticker: filingKey.ticker,
       year: filingKey.year,

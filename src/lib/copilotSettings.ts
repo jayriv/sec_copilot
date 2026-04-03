@@ -1,6 +1,10 @@
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/defaultSystemPrompt";
+
 export const COPILOT_CURRENT_CONTEXT_MAX_KEY = "sec-copilot-current-context-max-chars";
 export const COPILOT_ADDITIONAL_CONTEXT_MAX_KEY = "sec-copilot-additional-context-max-chars";
-export const COPILOT_SYSTEM_PROMPT_KEY = "sec-copilot-system-prompt-override";
+/** Saved textarea content (draft); may be the built-in default text for editing. */
+export const COPILOT_SYSTEM_PROMPT_DRAFT_KEY = "sec-copilot-system-prompt-override";
+export const COPILOT_USE_CUSTOM_SYSTEM_PROMPT_KEY = "sec-copilot-use-custom-system-prompt";
 
 /** Defaults match server env fallbacks in `llm_service.py`. */
 export const DEFAULT_CURRENT_CONTEXT_MAX = 80_000;
@@ -50,25 +54,67 @@ export function persistAdditionalContextMax(value: number): void {
   }
 }
 
-/** Empty string means "use server default" (no override). */
-export function loadSystemPromptOverride(): string {
-  if (typeof window === "undefined") return "";
+/**
+ * Whether chat requests should send `system_prompt` from the saved draft.
+ * Legacy: if draft key exists with non-empty text but the toggle key was never set, treat as true.
+ */
+export function loadUseCustomSystemPrompt(): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(COPILOT_SYSTEM_PROMPT_KEY) ?? "";
+    const toggle = window.localStorage.getItem(COPILOT_USE_CUSTOM_SYSTEM_PROMPT_KEY);
+    if (toggle === "1" || toggle === "true") return true;
+    if (toggle === "0" || toggle === "false") return false;
+    const draft = window.localStorage.getItem(COPILOT_SYSTEM_PROMPT_DRAFT_KEY);
+    if (draft != null && draft.trim() !== "") return true;
+    return false;
   } catch {
-    return "";
+    return false;
   }
 }
 
-export function persistSystemPromptOverride(text: string): void {
+export function persistUseCustomSystemPrompt(value: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    if (!text.trim()) {
-      window.localStorage.removeItem(COPILOT_SYSTEM_PROMPT_KEY);
-    } else {
-      window.localStorage.setItem(COPILOT_SYSTEM_PROMPT_KEY, text);
-    }
+    window.localStorage.setItem(COPILOT_USE_CUSTOM_SYSTEM_PROMPT_KEY, value ? "1" : "0");
   } catch {
     /* ignore */
+  }
+}
+
+/** Text shown in admin / used when "use custom" is on. `null` key → show built-in default. */
+export function loadSystemPromptDraftForEdit(): string {
+  if (typeof window === "undefined") return DEFAULT_SYSTEM_PROMPT;
+  try {
+    const raw = window.localStorage.getItem(COPILOT_SYSTEM_PROMPT_DRAFT_KEY);
+    if (raw === null) return DEFAULT_SYSTEM_PROMPT;
+    return raw;
+  } catch {
+    return DEFAULT_SYSTEM_PROMPT;
+  }
+}
+
+export function persistSystemPromptDraft(text: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COPILOT_SYSTEM_PROMPT_DRAFT_KEY, text);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Value to send on `/chat` when "use custom prompt" is on and a draft has been saved.
+ * If the toggle is on but the draft key was never written, returns null (server default).
+ */
+export function getEffectiveSystemPromptForRequest(): string | null {
+  if (typeof window === "undefined") return null;
+  if (!loadUseCustomSystemPrompt()) return null;
+  try {
+    const raw = window.localStorage.getItem(COPILOT_SYSTEM_PROMPT_DRAFT_KEY);
+    if (raw === null) return null;
+    const text = raw.trim();
+    return text || null;
+  } catch {
+    return null;
   }
 }

@@ -9,6 +9,9 @@ export const LLM_MODEL_GROUPS: { group: string; options: LlmOption[] }[] = [
   {
     group: "OpenAI",
     options: [
+      { id: "openai/gpt-5.4", label: "GPT-5.4" },
+      { id: "openai/gpt-5.4-mini", label: "GPT-5.4 mini" },
+      { id: "openai/gpt-5.4-nano", label: "GPT-5.4 nano" },
       { id: "openai/gpt-4", label: "GPT-4" },
       { id: "openai/gpt-4o", label: "GPT-4o" },
       { id: "openai/gpt-4o-mini", label: "GPT-4o mini" }
