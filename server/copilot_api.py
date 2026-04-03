@@ -4,16 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from server.llm_service import ask_llm
 from server.models import ChatRequest, ChatResponse, FilingAnchorModel, FilingFragmentResponse, FilingResponse
+from server.path_normalize import NormalizeApiPathMiddleware
 from server.sec_service import get_filing_fragment_html, get_filing_text, maybe_get_comparison_context, prepare_filing_display
-
-API_PREFIX = "/api/py"
 
 load_dotenv()
 
 app = FastAPI(
     title="SEC Copilot API",
-    docs_url=f"{API_PREFIX}/docs",
-    openapi_url=f"{API_PREFIX}/openapi.json",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
 )
 
 app.add_middleware(
@@ -23,16 +22,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(NormalizeApiPathMiddleware)
 
 
 @app.get("/health")
-@app.get(f"{API_PREFIX}/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/filing", response_model=FilingResponse)
-@app.get(f"{API_PREFIX}/filing", response_model=FilingResponse)
 def filing(ticker: str, year: str, form_type: str) -> FilingResponse:
     try:
         bundle = get_filing_text(ticker=ticker, year=year, form_type=form_type)
@@ -53,7 +51,6 @@ def filing(ticker: str, year: str, form_type: str) -> FilingResponse:
 
 
 @app.get("/filing/fragment", response_model=FilingFragmentResponse)
-@app.get(f"{API_PREFIX}/filing/fragment", response_model=FilingFragmentResponse)
 def filing_fragment(ticker: str, year: str, form_type: str, fragment: str) -> FilingFragmentResponse:
     try:
         html = get_filing_fragment_html(ticker=ticker, year=year, form_type=form_type, fragment=fragment)
@@ -70,7 +67,6 @@ def filing_fragment(ticker: str, year: str, form_type: str, fragment: str) -> Fi
 
 
 @app.post("/chat", response_model=ChatResponse)
-@app.post(f"{API_PREFIX}/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     try:
         additional_context = maybe_get_comparison_context(
@@ -88,4 +84,10 @@ def chat(payload: ChatRequest) -> ChatResponse:
         )
         return ChatResponse(answer=answer, source_quote=source_quote)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to answer question: {exc}") from exc
+        msg = str(exc).strip() or repr(exc)
+        if ("api key" in msg.lower()) or ("invalid" in msg.lower() and "key" in msg.lower()):
+            msg = (
+                f"{msg} — Set the matching provider API key in Vercel "
+                "(e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)."
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to answer question: {msg}") from exc

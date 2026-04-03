@@ -169,7 +169,19 @@ export default function HomePage() {
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
-        throw new Error("Chat request failed.");
+        let msg = "Chat request failed.";
+        try {
+          const errBody = (await response.json()) as { detail?: unknown };
+          if (errBody.detail !== undefined) {
+            msg =
+              typeof errBody.detail === "string"
+                ? errBody.detail
+                : JSON.stringify(errBody.detail);
+          }
+        } catch {
+          /* keep default */
+        }
+        throw new Error(msg);
       }
       const data = (await response.json()) as ChatResponse;
       const assistantMessage: ChatMessage = {
