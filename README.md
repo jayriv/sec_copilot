@@ -38,7 +38,7 @@ If the UI shows **api offline**, open `/api/py/health` on your deployment in the
 4. Optional: set **Function** max duration / plan limits; `vercel.json` requests up to 60s for `api/index.py` (requires a plan that supports it).
 
 ### Notes
-- Python + Next.js in one project follows the common pattern: Next rewrites `/api/py/:path*` to the Python serverless entry in production, and to `localhost:8000` in development (see `next.config.js`).
+- Python + Next.js in one project follows the common pattern: Next rewrites `/api/py/:path*` to the Python serverless entry in production, and to `localhost:8000` in development (see `next.config.js`). In production the rewrite target is **`/api/`** (not `/api/:path*`): on Vercel, only the bare `/api` path invokes `api/index.py`; rewriting to `/api/health` is handled by Next.js and returns 404 unless you use `/api/`.
 - Serverless bundles must stay within Vercel size limits; large scientific stacks may require trimming dependencies.
 
 ## Secret scanning (pre-commit)
