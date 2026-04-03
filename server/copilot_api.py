@@ -1,3 +1,5 @@
+import os
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,8 +28,12 @@ app.add_middleware(NormalizeApiPathMiddleware)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, str | bool]:
+    """Backend liveness; does not call SEC. EDGAR_IDENTITY is required for /filing and /chat."""
+    return {
+        "status": "ok",
+        "edgar_identity_configured": bool(os.getenv("EDGAR_IDENTITY", "").strip()),
+    }
 
 
 @app.get("/filing", response_model=FilingResponse)

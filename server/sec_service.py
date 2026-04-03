@@ -2,8 +2,7 @@ import os
 import re
 from dataclasses import dataclass
 from time import time
-
-from edgar import Company, set_identity
+from typing import Any
 
 from server.filing_anchors import build_filing_anchors, extract_fragment_html
 
@@ -56,6 +55,8 @@ _EDGAR_CONFIGURED = False
 
 
 def init_edgar_identity() -> None:
+    from edgar import set_identity
+
     identity = os.getenv("EDGAR_IDENTITY")
     if not identity:
         raise RuntimeError("EDGAR_IDENTITY is required. Example: 'SEC Copilot your@email.com'")
@@ -70,7 +71,7 @@ def ensure_edgar_identity() -> None:
     _EDGAR_CONFIGURED = True
 
 
-def _pick_filing(company: Company, form_type: str, calendar_year: str) -> object:
+def _pick_filing(company: Any, form_type: str, calendar_year: str) -> object:
     """Choose a filing whose SEC filing_date falls in calendar_year when possible."""
     filings = company.get_filings(form=form_type.upper())
     try:
@@ -94,6 +95,8 @@ def _pick_filing(company: Company, form_type: str, calendar_year: str) -> object
 
 
 def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
+    from edgar import Company
+
     ensure_edgar_identity()
     cache_key = (ticker.upper(), year, form_type.upper())
     cached = _FILING_CACHE.get(cache_key)

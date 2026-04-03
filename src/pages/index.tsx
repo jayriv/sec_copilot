@@ -55,6 +55,8 @@ export default function HomePage() {
   const [errorScope, setErrorScope] = useState<"ticker" | "chat" | undefined>();
   const [isCachedFiling, setIsCachedFiling] = useState(false);
   const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
+  /** When API is online, whether EDGAR_IDENTITY is set (required for SEC data). */
+  const [edgarIdentityOk, setEdgarIdentityOk] = useState<boolean | null>(null);
   const [chatDocked, setChatDocked] = useState(false);
   const [chatModel, setChatModel] = useState(DEFAULT_LLM_MODEL);
 
@@ -86,10 +88,21 @@ export default function HomePage() {
         const response = await fetch(`${apiBase}${apiPrefix}/health`);
         if (!cancelled) {
           setHealthStatus(response.ok ? "online" : "offline");
+          if (response.ok) {
+            try {
+              const body = (await response.json()) as { edgar_identity_configured?: boolean };
+              setEdgarIdentityOk(Boolean(body.edgar_identity_configured));
+            } catch {
+              setEdgarIdentityOk(null);
+            }
+          } else {
+            setEdgarIdentityOk(null);
+          }
         }
       } catch {
         if (!cancelled) {
           setHealthStatus("offline");
+          setEdgarIdentityOk(null);
         }
       }
     };
@@ -106,7 +119,19 @@ export default function HomePage() {
       `${apiBase}${apiPrefix}/filing?ticker=${key.ticker}&year=${key.year}&form_type=${key.formType}`
     );
     if (!response.ok) {
-      throw new Error("Unable to load filing.");
+      let msg = "Unable to load filing.";
+      try {
+        const errBody = (await response.json()) as { detail?: unknown };
+        if (errBody.detail !== undefined) {
+          msg =
+            typeof errBody.detail === "string"
+              ? errBody.detail
+              : JSON.stringify(errBody.detail);
+        }
+      } catch {
+        /* keep default */
+      }
+      throw new Error(msg);
     }
     const data = (await response.json()) as FilingResponse;
     return data;
@@ -226,18 +251,30 @@ export default function HomePage() {
             <span
               className={`rounded-md px-2 py-1 text-xs ring-1 ${
                 healthStatus === "online"
-                  ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                  ? edgarIdentityOk === false
+                    ? "bg-amber-50 text-amber-900 ring-amber-200"
+                    : "bg-emerald-50 text-emerald-800 ring-emerald-200"
                   : healthStatus === "offline"
                     ? "bg-rose-50 text-rose-800 ring-rose-200"
                     : "bg-slate-100 text-slate-700 ring-slate-200"
               }`}
-              title="Copilot API status (this service loads filings from the SEC EDGAR database)."
+              title={
+                healthStatus === "offline"
+                  ? "Copilot API unreachable (Python serverless). Check deployment logs — not necessarily sec.gov."
+                  : healthStatus === "checking"
+                    ? "Checking Copilot API health…"
+                    : edgarIdentityOk === false
+                      ? "Set EDGAR_IDENTITY in Vercel (SEC-required User-Agent). Example: Your Name your@email.com"
+                      : "Copilot API is up; filings load from SEC EDGAR via edgartools."
+              }
             >
               {healthStatus === "online"
-                ? "SEC EDGAR API online"
+                ? edgarIdentityOk === false
+                  ? "Copilot API online · EDGAR_IDENTITY missing"
+                  : "Copilot API online"
                 : healthStatus === "offline"
-                  ? "SEC EDGAR API offline"
-                  : "checking SEC EDGAR API"}
+                  ? "Copilot API offline"
+                  : "checking Copilot API"}
             </span>
           </div>
           <p className="mt-0.5 text-sm text-slate-600">
