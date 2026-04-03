@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ChatMessage, FilingAnchor, FilingKey, Highlight, StoredSession } from "@/lib/types";
 import { loadSession, saveSession } from "@/lib/storage";
 
@@ -59,31 +59,34 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     saveSession(next);
   };
 
-  const switchTicker = (
-    nextKey: FilingKey,
-    newDocText = "",
-    newDocHtml = "",
-    filingMeta?: { anchors?: FilingAnchor[]; htmlPartial?: boolean }
-  ) => {
-    saveSession({ ...session, updatedAt: Date.now() });
-    const loaded = loadSession(nextKey);
-    const base = loaded ? normalizeSession(loaded) : createEmptySession(nextKey, "", "");
-    const nextSession: StoredSession = {
-      ...base,
-      filingKey: nextKey,
-      ...(newDocText
-        ? {
-            documentText: newDocText,
-            documentHtml: newDocHtml ?? "",
-            documentAnchors: filingMeta?.anchors ?? [],
-            documentHtmlPartial: filingMeta?.htmlPartial ?? false
-          }
-        : {}),
-      selectedText: "",
-      updatedAt: Date.now()
-    };
-    persist(nextSession);
-  };
+  const switchTicker = useCallback(
+    (
+      nextKey: FilingKey,
+      newDocText = "",
+      newDocHtml = "",
+      filingMeta?: { anchors?: FilingAnchor[]; htmlPartial?: boolean }
+    ) => {
+      saveSession({ ...session, updatedAt: Date.now() });
+      const loaded = loadSession(nextKey);
+      const base = loaded ? normalizeSession(loaded) : createEmptySession(nextKey, "", "");
+      const nextSession: StoredSession = {
+        ...base,
+        filingKey: nextKey,
+        ...(newDocText
+          ? {
+              documentText: newDocText,
+              documentHtml: newDocHtml ?? "",
+              documentAnchors: filingMeta?.anchors ?? [],
+              documentHtmlPartial: filingMeta?.htmlPartial ?? false
+            }
+          : {}),
+        selectedText: "",
+        updatedAt: Date.now()
+      };
+      persist(nextSession);
+    },
+    [session]
+  );
 
   const value = useMemo<SessionContextValue>(
     () => ({
@@ -111,7 +114,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
         }),
       switchTicker
     }),
-    [session]
+    [session, switchTicker]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

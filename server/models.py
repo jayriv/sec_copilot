@@ -22,6 +22,12 @@ class ChatRequest(FilingRequest):
     selected_text: str | None = None
     """LiteLLM model id, e.g. openai/gpt-4, anthropic/claude-3-5-sonnet-20241022."""
     llm_model: str | None = None
+    """Per-request cap for main filing excerpt; server clamps to configured min/max."""
+    current_context_max_chars: int | None = None
+    """Per-request cap for comparison / additional filing text."""
+    additional_context_max_chars: int | None = None
+    """When server sets COPILOT_ALLOW_CLIENT_SYSTEM_PROMPT=1, overrides default system prompt."""
+    system_prompt: str | None = None
 
 
 class FilingResponse(BaseModel):

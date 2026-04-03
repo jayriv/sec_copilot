@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
+import Link from "next/link";
+import { Settings, Sparkles } from "lucide-react";
 import { ChatPanel } from "@/components/ChatPanel";
 import { FilingReader } from "@/components/FilingReader";
 import { RecentResearch } from "@/components/RecentResearch";
@@ -7,6 +8,15 @@ import { TickerSwitcher } from "@/components/TickerSwitcher";
 import { useSession } from "@/context/SessionContext";
 import { loadRecents } from "@/lib/storage";
 import { LlmModelPicker } from "@/components/LlmModelPicker";
+import {
+  DEFAULT_ADDITIONAL_CONTEXT_MAX,
+  DEFAULT_CURRENT_CONTEXT_MAX,
+  loadAdditionalContextMax,
+  loadCurrentContextMax,
+  loadSystemPromptOverride,
+  persistAdditionalContextMax,
+  persistCurrentContextMax
+} from "@/lib/copilotSettings";
 import { DEFAULT_LLM_MODEL, isKnownLlmModel, LLM_MODEL_STORAGE_KEY } from "@/lib/llmCatalog";
 import { ChatMessage, FilingAnchor, FilingKey } from "@/lib/types";
 
@@ -59,6 +69,21 @@ export default function HomePage() {
   const [edgarIdentityOk, setEdgarIdentityOk] = useState<boolean | null>(null);
   const [chatDocked, setChatDocked] = useState(false);
   const [chatModel, setChatModel] = useState(DEFAULT_LLM_MODEL);
+  const [currentContextMax, setCurrentContextMax] = useState(DEFAULT_CURRENT_CONTEXT_MAX);
+  const [additionalContextMax, setAdditionalContextMax] = useState(DEFAULT_ADDITIONAL_CONTEXT_MAX);
+
+  useEffect(() => {
+    setCurrentContextMax(loadCurrentContextMax());
+    setAdditionalContextMax(loadAdditionalContextMax());
+  }, []);
+
+  useEffect(() => {
+    persistCurrentContextMax(currentContextMax);
+  }, [currentContextMax]);
+
+  useEffect(() => {
+    persistAdditionalContextMax(additionalContextMax);
+  }, [additionalContextMax]);
 
   useEffect(() => {
     try {
@@ -177,6 +202,7 @@ export default function HomePage() {
     setErrorScope(undefined);
     addMessage({ id: crypto.randomUUID(), role: "user", content: prompt });
     setLastPrompt(prompt);
+    const sp = loadSystemPromptOverride().trim();
     const payload = {
       ticker: filingKey.ticker,
       year: filingKey.year,
@@ -184,7 +210,10 @@ export default function HomePage() {
       question: prompt,
       current_context: documentText,
       selected_text: selectedText,
-      llm_model: chatModel
+      llm_model: chatModel,
+      current_context_max_chars: currentContextMax,
+      additional_context_max_chars: additionalContextMax,
+      ...(sp ? { system_prompt: sp } : {})
     };
     setIsAsking(true);
     try {
@@ -280,6 +309,13 @@ export default function HomePage() {
           <p className="mt-0.5 text-sm text-slate-600">
             Session-aware filing research with comparison-ready Q&A.
           </p>
+          <Link
+            href="/admin"
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 hover:text-violet-900"
+          >
+            <Settings className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Admin / system prompt
+          </Link>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-end sm:gap-4">
           <LlmModelPicker value={chatModel} onChange={setChatModel} />
@@ -338,6 +374,12 @@ export default function HomePage() {
                 onSubmit={onSubmitChat}
                 onMinimize={() => setChatDocked(false)}
                 showSparkleBrand
+                contextSettings={{
+                  currentContextMax,
+                  additionalContextMax,
+                  onCurrentContextMaxChange: setCurrentContextMax,
+                  onAdditionalContextMaxChange: setAdditionalContextMax
+                }}
               />
             </div>
           </div>

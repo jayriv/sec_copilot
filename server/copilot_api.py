@@ -81,14 +81,23 @@ def chat(payload: ChatRequest) -> ChatResponse:
             year=payload.year,
             active_form_type=payload.form_type,
         )
+        sp = (payload.system_prompt or "").strip() or None
         answer, source_quote = ask_llm(
             question=payload.question,
             current_context=payload.current_context,
             additional_context=additional_context,
             selected_text=payload.selected_text or "",
             llm_model=payload.llm_model,
+            current_context_max_chars=payload.current_context_max_chars,
+            additional_context_max_chars=payload.additional_context_max_chars,
+            system_prompt_override=sp,
         )
         return ChatResponse(answer=answer, source_quote=source_quote)
+    except ValueError as exc:
+        msg = str(exc).strip() or repr(exc)
+        if "COPILOT_ALLOW_CLIENT_SYSTEM_PROMPT" in msg:
+            raise HTTPException(status_code=403, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
     except Exception as exc:
         msg = str(exc).strip() or repr(exc)
         if ("api key" in msg.lower()) or ("invalid" in msg.lower() and "key" in msg.lower()):

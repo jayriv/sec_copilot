@@ -102,7 +102,7 @@ export const FilingReader = ({
     return () => {
       cancelled = true;
     };
-  }, [html, fragmentOverride, showHtml, sourceQuote, externalAnchors]);
+  }, [rawHtmlInput, html, fragmentOverride, showHtml, sourceQuote, externalAnchors]);
 
   useEffect(() => {
     if (!sourceQuote || !showHtml) return;

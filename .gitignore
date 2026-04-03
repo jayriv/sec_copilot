@@ -1,3 +1,6 @@
+# Portable Node (optional local toolchain; see README)
+.tools/
+
 node_modules/
 .next/
 .vercel/

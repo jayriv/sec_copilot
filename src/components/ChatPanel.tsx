@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ChevronDown, Sparkles } from "lucide-react";
+import { ChatContextSliders } from "@/components/ChatContextSliders";
 import { ChatMessage } from "@/lib/types";
 
 type Props = {
@@ -11,6 +12,13 @@ type Props = {
   onMinimize?: () => void;
   /** Show sparkles in header when true (docked overlay). */
   showSparkleBrand?: boolean;
+  /** Per-prompt context size controls (optional). */
+  contextSettings?: {
+    currentContextMax: number;
+    additionalContextMax: number;
+    onCurrentContextMaxChange: (value: number) => void;
+    onAdditionalContextMaxChange: (value: number) => void;
+  };
 };
 
 export const ChatPanel = ({
@@ -20,7 +28,8 @@ export const ChatPanel = ({
   onRetry,
   onSubmit,
   onMinimize,
-  showSparkleBrand = true
+  showSparkleBrand = true,
+  contextSettings
 }: Props) => {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -56,6 +65,14 @@ export const ChatPanel = ({
           </button>
         )}
       </div>
+      {contextSettings && (
+        <ChatContextSliders
+          currentContextMax={contextSettings.currentContextMax}
+          additionalContextMax={contextSettings.additionalContextMax}
+          onCurrentContextMaxChange={contextSettings.onCurrentContextMaxChange}
+          onAdditionalContextMaxChange={contextSettings.onAdditionalContextMaxChange}
+        />
+      )}
       {error && (
         <div className="mb-3 shrink-0 rounded-lg border border-rose-100 bg-rose-50/90 px-3 py-2 text-xs text-rose-800">
           <div>{error}</div>
