@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { ChatContextSliders } from "@/components/ChatContextSliders";
 import { ChatMessage } from "@/lib/types";
+
+const CONTEXT_EXPANDED_KEY = "sec-copilot-chat-context-expanded";
 
 type Props = {
   messages: ChatMessage[];
@@ -32,7 +34,28 @@ export const ChatPanel = ({
   contextSettings
 }: Props) => {
   const [input, setInput] = useState("");
+  const [contextOpen, setContextOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      setContextOpen(window.localStorage.getItem(CONTEXT_EXPANDED_KEY) === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleContextOpen = () => {
+    setContextOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(CONTEXT_EXPANDED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -66,12 +89,32 @@ export const ChatPanel = ({
         )}
       </div>
       {contextSettings && (
-        <ChatContextSliders
-          currentContextMax={contextSettings.currentContextMax}
-          additionalContextMax={contextSettings.additionalContextMax}
-          onCurrentContextMaxChange={contextSettings.onCurrentContextMaxChange}
-          onAdditionalContextMaxChange={contextSettings.onAdditionalContextMaxChange}
-        />
+        <div className="mb-2 shrink-0">
+          <button
+            type="button"
+            onClick={toggleContextOpen}
+            className="flex w-full items-center justify-between gap-2 rounded-lg border border-violet-100/90 bg-violet-50/50 px-2.5 py-1.5 text-left text-xs font-medium text-violet-900/90 shadow-sm transition hover:bg-violet-50"
+            aria-expanded={contextOpen}
+            aria-controls="copilot-context-sliders"
+            id="copilot-context-toggle"
+          >
+            <span>Context size (tokens)</span>
+            <ChevronRight
+              className={`h-4 w-4 shrink-0 text-violet-700 transition-transform ${contextOpen ? "rotate-90" : ""}`}
+              aria-hidden
+            />
+          </button>
+          {contextOpen && (
+            <div id="copilot-context-sliders" className="mt-2">
+              <ChatContextSliders
+                currentContextMax={contextSettings.currentContextMax}
+                additionalContextMax={contextSettings.additionalContextMax}
+                onCurrentContextMaxChange={contextSettings.onCurrentContextMaxChange}
+                onAdditionalContextMaxChange={contextSettings.onAdditionalContextMaxChange}
+              />
+            </div>
+          )}
+        </div>
       )}
       {error && (
         <div className="mb-3 shrink-0 rounded-lg border border-rose-100 bg-rose-50/90 px-3 py-2 text-xs text-rose-800">

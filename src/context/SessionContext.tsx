@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ChatMessage, FilingAnchor, FilingKey, Highlight, StoredSession } from "@/lib/types";
-import { loadSession, saveSession } from "@/lib/storage";
+import { loadLastActiveFilingKey, loadRecents, loadSession, saveSession } from "@/lib/storage";
 
 const defaultKey: FilingKey = { ticker: "CHGG", year: "2026", formType: "10-K" };
 
@@ -50,8 +50,13 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<StoredSession>(createEmptySession(defaultKey));
 
   useEffect(() => {
-    const existing = loadSession(defaultKey);
-    if (existing) setSession(normalizeSession(existing));
+    const key = loadLastActiveFilingKey() ?? loadRecents()[0] ?? defaultKey;
+    const existing = loadSession(key);
+    if (existing) {
+      setSession(normalizeSession(existing));
+    } else {
+      setSession(createEmptySession(key));
+    }
   }, []);
 
   const persist = (next: StoredSession) => {
