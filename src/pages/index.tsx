@@ -268,17 +268,17 @@ export default function HomePage() {
 
   return (
     <main className="flex h-screen min-h-0 flex-col bg-gradient-to-br from-violet-50/50 via-slate-50 to-indigo-50/40">
-      <header className="z-50 flex shrink-0 items-center justify-between gap-4 border-b border-violet-100/80 bg-white/85 px-5 py-4 shadow-sm shadow-violet-950/5 backdrop-blur-md">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-violet-950">SEC Copilot</h1>
+      <header className="z-50 flex shrink-0 items-center justify-between gap-3 border-b border-violet-100/80 bg-white/85 px-3 py-2 shadow-sm shadow-violet-950/5 backdrop-blur-md sm:px-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h1 className="text-base font-semibold leading-tight text-violet-950 sm:text-lg">SEC Copilot</h1>
             {isCachedFiling && (
-              <span className="rounded-md bg-violet-50 px-2 py-1 text-xs text-violet-900/80 ring-1 ring-violet-200/80">
+              <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[0.65rem] font-medium text-violet-900/85 ring-1 ring-violet-200/80">
                 cached
               </span>
             )}
             <span
-              className={`rounded-md px-2 py-1 text-xs ring-1 ${
+              className={`rounded px-1.5 py-0.5 text-[0.65rem] font-medium ring-1 ${
                 healthStatus === "online"
                   ? edgarIdentityOk === false
                     ? "bg-amber-50 text-amber-900 ring-amber-200"
@@ -306,29 +306,33 @@ export default function HomePage() {
                   : "checking Copilot API"}
             </span>
           </div>
-          <p className="mt-0.5 text-sm text-slate-600">
-            Session-aware filing research with comparison-ready Q&A.
-          </p>
-          <Link
-            href="/admin"
-            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-violet-700 hover:text-violet-900"
-          >
-            <Settings className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            Admin / system prompt
-          </Link>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[0.7rem] leading-snug text-slate-600">
+            <span className="hidden min-[380px]:inline">Session-aware filing research with comparison-ready Q&A.</span>
+            <span className="min-[380px]:hidden">SEC filing research & Q&A</span>
+            <span className="text-slate-300" aria-hidden>
+              ·
+            </span>
+            <Link
+              href="/admin"
+              className="inline-flex shrink-0 items-center gap-1 font-medium text-violet-700 hover:text-violet-900"
+            >
+              <Settings className="h-3 w-3 shrink-0" aria-hidden />
+              Admin
+            </Link>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-end sm:gap-4">
+        <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-end sm:gap-3">
           <LlmModelPicker value={chatModel} onChange={setChatModel} />
           <TickerSwitcher initial={filingKey} isLoading={isSwitchingTicker} onSwitch={onSwitchTicker} />
         </div>
       </header>
       {sessionSavedMessage && (
-        <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/95 px-5 py-2 text-sm text-emerald-900">
+        <div className="shrink-0 border-b border-emerald-100 bg-emerald-50/95 px-3 py-1.5 text-xs text-emerald-900 sm:px-4">
           {sessionSavedMessage}
         </div>
       )}
       {errorMessage && errorScope === "ticker" && (
-        <div className="shrink-0 border-b border-rose-100 bg-rose-50/95 px-5 py-3 text-sm text-rose-900">
+        <div className="shrink-0 border-b border-rose-100 bg-rose-50/95 px-3 py-2 text-xs text-rose-900 sm:px-4 sm:text-sm">
           <div>{errorMessage}</div>
           <button
             className="mt-2 rounded-md bg-rose-100 px-3 py-1 text-xs text-rose-900 shadow-sm hover:bg-rose-200/80"
@@ -341,7 +345,7 @@ export default function HomePage() {
 
       <div className="relative min-h-0 flex-1">
         <div
-          className="absolute inset-0 flex min-h-0 flex-col gap-3 p-4 transition-[padding-right] duration-300"
+          className="absolute inset-0 flex min-h-0 flex-col gap-2 p-3 transition-[padding-right] duration-300 sm:p-4"
           style={chatDocked ? { paddingRight: `calc(${chatOverlayWidth} + 1rem)` } : {}}
         >
           <div className="min-h-0 flex-1">
