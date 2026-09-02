@@ -75,7 +75,16 @@ def _env_float(name: str, default: float) -> float:
 
 
 def agent_enabled() -> bool:
-    return os.getenv("COPILOT_AGENT_MODE", "").strip().lower() in ("1", "true", "yes", "on")
+    """On by default. Set COPILOT_AGENT_MODE=0 to force the single-shot path.
+
+    Safe as a default because every failure mode falls back: a model without
+    tool support, a provider error, or a bad loop all drop through to ask_llm
+    in copilot_api.chat rather than costing the student an answer.
+    """
+    raw = os.getenv("COPILOT_AGENT_MODE", "").strip().lower()
+    if not raw:
+        return True
+    return raw in ("1", "true", "yes", "on")
 
 
 # ---------------------------------------------------------------------------
