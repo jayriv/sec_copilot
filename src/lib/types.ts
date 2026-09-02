@@ -12,11 +12,26 @@ export type FilingAnchor = {
   source: "toc" | "heading" | "target" | "item";
 };
 
+/** One open-courseware passage sent with a question (mirrors server CoursewareCitation). */
+export type CoursewareCitation = {
+  id: string;
+  /** e.g. "BAP, Ch. 5, pp. 205-206" */
+  citation: string;
+  headingPath: string;
+  sourceId: string;
+  lens: string[];
+  score: number;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   sourceQuote?: string;
+  /** Course material consulted for this answer. */
+  citations?: CoursewareCitation[];
+  /** Lens labels whose guidance shaped the answer, e.g. ["Financial statement analysis"]. */
+  lenses?: string[];
   /** User message created from filing selection (styled in thread order). */
   kind?: "selection" | "chat";
 };

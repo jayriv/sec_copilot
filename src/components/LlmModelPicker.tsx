@@ -21,7 +21,7 @@ export const LlmModelPicker = ({ value, onChange }: Props) => {
           <optgroup key={g.group} label={g.group}>
             {g.options.map((o: LlmOption) => (
               <option key={o.id} value={o.id}>
-                {o.label}
+                {o.price ? `${o.label} — ${o.price} /1M` : o.label}
               </option>
             ))}
           </optgroup>

@@ -1,11 +1,30 @@
 /** LiteLLM unified model ids (provider/model). Default matches server. */
-export const DEFAULT_LLM_MODEL = "openai/gpt-4";
+
+/**
+ * Sonnet 5 ($2 / $10 per 1M tokens) is the default for user-facing answers:
+ * strong enough for financial-statement reasoning without Opus pricing on a
+ * student-facing app. Keep in sync with DEFAULT_MODEL in server/llm_service.py.
+ */
+export const DEFAULT_LLM_MODEL = "anthropic/claude-sonnet-5";
 
 export const LLM_MODEL_STORAGE_KEY = "sec-copilot-llm-model";
 
-export type LlmOption = { id: string; label: string };
+export type LlmOption = {
+  id: string;
+  label: string;
+  /** Rough input/output cost per 1M tokens, shown in the picker. */
+  price?: string;
+};
 
 export const LLM_MODEL_GROUPS: { group: string; options: LlmOption[] }[] = [
+  {
+    group: "Anthropic",
+    options: [
+      { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5", price: "$2 / $10" },
+      { id: "anthropic/claude-opus-5", label: "Claude Opus 5", price: "$5 / $25" },
+      { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5", price: "$1 / $5" }
+    ]
+  },
   {
     group: "OpenAI",
     options: [
@@ -15,13 +34,6 @@ export const LLM_MODEL_GROUPS: { group: string; options: LlmOption[] }[] = [
       { id: "openai/gpt-4", label: "GPT-4" },
       { id: "openai/gpt-4o", label: "GPT-4o" },
       { id: "openai/gpt-4o-mini", label: "GPT-4o mini" }
-    ]
-  },
-  {
-    group: "Anthropic",
-    options: [
-      { id: "anthropic/claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-      { id: "anthropic/claude-3-opus-20240229", label: "Claude 3 Opus" }
     ]
   },
   {

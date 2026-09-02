@@ -1,0 +1,14 @@
+# Offline courseware ingest only. NEVER add these to requirements.txt --
+# they must not enter the Vercel serverless bundle (250MB unzipped limit,
+# already tight with edgartools -> pandas/pyarrow).
+#
+#   pip install -r requirements-ingest.txt
+#   python scripts/ingest_courseware.py
+
+pymupdf              # PDF parsing + embedded table of contents
+pymupdf4llm          # markdown extraction with table structure
+tiktoken             # token-accurate chunking
+pyyaml               # manifest
+numpy                # vector packing
+openai               # embeddings (runtime uses litellm against the same model)
+python-dotenv        # reads OPENAI_API_KEY from .env

@@ -1,0 +1,58 @@
+{
+  "manifest_version": 1,
+  "embedding": {
+    "model": "text-embedding-3-small",
+    "dimensions": 512
+  },
+  "chunk_count": 1222,
+  "vector_bytes": 1251328,
+  "lenses": {
+    "financial-accounting": {
+      "label": "Financial accounting",
+      "description": "Recognition, measurement, and presentation of transactions in the financial statements.",
+      "guidance": "Trace every figure to a specific financial statement line item. Check the\naccounting policy notes before asserting how something was recognized or\nmeasured. Distinguish clearly between what the standards require and what\nmanagement elected among permitted alternatives.",
+      "chunk_count": 891
+    },
+    "financial-statement-analysis": {
+      "label": "Financial statement analysis",
+      "description": "Ratios, trends, cash flow analysis, and cross-period comparison.",
+      "guidance": "Define each ratio before computing it, and show the inputs you used and\nthe statement lines they came from. A ratio is uninterpretable alone --\ncompare against the prior period or a stated benchmark, and say which.\nName the limitation of the measure when one materially applies.",
+      "chunk_count": 136
+    },
+    "managerial-accounting": {
+      "label": "Managerial and cost accounting",
+      "description": "Costing systems, budgeting, variance analysis, and internal decision support.",
+      "guidance": "Separate cost behavior (fixed, variable, mixed) before analyzing. State\nwhether the figure is a relevant cost for the decision at hand, and\nignore sunk costs explicitly rather than silently.",
+      "chunk_count": 331
+    },
+    "valuation": {
+      "label": "Valuation",
+      "description": "Intrinsic and relative valuation, cost of capital, forecasting.",
+      "guidance": "Name the value driver before computing anything. State every assumption\nexplicitly and label it as an assumption, never as a fact from the\nfiling. Sanity-check any multiple or growth rate against a stated peer\nor historical range instead of asserting a point estimate.",
+      "chunk_count": 0
+    },
+    "audit": {
+      "label": "Audit and assurance",
+      "description": "Evidence, internal control, going concern, and earnings quality.",
+      "guidance": "Consider what evidence would corroborate or contradict the assertion.\nFlag earnings-quality signals (accrual behavior, one-time items, changes\nin estimate) as questions to investigate, never as accusations.",
+      "chunk_count": 0
+    }
+  },
+  "sources": [
+    {
+      "id": "bap",
+      "citation_label": "BAP",
+      "title": "Accounting Principles: A Business Perspective",
+      "authors": [
+        "Roger H. Hermanson",
+        "James Don Edwards",
+        "Michael W. Maher"
+      ],
+      "license": "CC BY 3.0",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/",
+      "attribution": "\"Accounting Principles: A Business Perspective\" by Hermanson, Edwards & Maher, Global Text Project, licensed CC BY 3.0.",
+      "url": "https://openlibrary-repo.ecampusontario.ca/jspui/handle/123456789/240",
+      "chunk_count": 1222
+    }
+  ]
+}

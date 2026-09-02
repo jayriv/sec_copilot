@@ -3,3 +3,7 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+        # courseware/index/ is generated: truncated SHA-256 content hashes used
+        # for cache invalidation, plus embedding vectors. High-entropy by
+        # construction, none of it secret. Scanning stays on everywhere else.
+        exclude: ^courseware/index/

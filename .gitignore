@@ -12,3 +12,10 @@ node_modules/
 __pycache__/
 *.pyc
 *.tsbuildinfo
+
+# Courseware: source PDFs and the extract/embed caches stay local. The built
+# index AND the per-source shards are committed -- shards are what make adding
+# book #2 re-embed only book #2 on a fresh clone. Re-fetch source PDFs from the
+# `url` recorded in courseware/manifest.yaml.
+courseware/sources/
+courseware/index/cache/

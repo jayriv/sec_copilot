@@ -1,8 +1,11 @@
 import {
   DEFAULT_ADDITIONAL_CONTEXT_MAX,
+  DEFAULT_COURSEWARE_CONTEXT_MAX,
   DEFAULT_CURRENT_CONTEXT_MAX,
   SLIDER_ADDITIONAL_MAX,
   SLIDER_ADDITIONAL_MIN,
+  SLIDER_COURSEWARE_MAX,
+  SLIDER_COURSEWARE_MIN,
   SLIDER_CURRENT_MAX,
   SLIDER_CURRENT_MIN
 } from "@/lib/copilotSettings";
@@ -10,15 +13,19 @@ import {
 type Props = {
   currentContextMax: number;
   additionalContextMax: number;
+  coursewareContextMax: number;
   onCurrentContextMaxChange: (value: number) => void;
   onAdditionalContextMaxChange: (value: number) => void;
+  onCoursewareContextMaxChange: (value: number) => void;
 };
 
 export const ChatContextSliders = ({
   currentContextMax,
   additionalContextMax,
+  coursewareContextMax,
   onCurrentContextMaxChange,
-  onAdditionalContextMaxChange
+  onAdditionalContextMaxChange,
+  onCoursewareContextMaxChange
 }: Props) => {
   return (
     <div className="mb-3 shrink-0 space-y-3 rounded-xl border border-violet-100/90 bg-violet-50/40 px-3 py-2.5 text-xs text-violet-950/90">
@@ -64,6 +71,28 @@ export const ChatContextSliders = ({
         <p className="mt-1 text-[0.65rem] leading-snug text-violet-900/70">
           Used when the app pulls a second filing for comparisons. Default{" "}
           {DEFAULT_ADDITIONAL_CONTEXT_MAX.toLocaleString()}.
+        </p>
+      </div>
+      <div>
+        <div className="mb-1 flex items-baseline justify-between gap-2">
+          <span className="font-medium">Course material</span>
+          <span className="tabular-nums text-violet-800/90">
+            {coursewareContextMax === 0 ? "off" : `${coursewareContextMax.toLocaleString()} chars`}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={SLIDER_COURSEWARE_MIN}
+          max={SLIDER_COURSEWARE_MAX}
+          step={1000}
+          value={coursewareContextMax}
+          onChange={(e) => onCoursewareContextMaxChange(Number(e.target.value))}
+          className="h-2 w-full cursor-pointer accent-[#36013F]"
+          aria-label="Maximum characters of open textbook material to send with each question"
+        />
+        <p className="mt-1 text-[0.65rem] leading-snug text-violet-900/70">
+          Open textbook passages retrieved for concept questions. Company facts always come from the
+          filing. 0 turns retrieval off. Default {DEFAULT_COURSEWARE_CONTEXT_MAX.toLocaleString()}.
         </p>
       </div>
     </div>

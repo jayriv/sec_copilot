@@ -16,12 +16,26 @@ class FilingRequest(BaseModel):
     form_type: str
 
 
+class CoursewareCitation(BaseModel):
+    """One open-courseware passage sent with the question."""
+
+    id: str
+    citation: str
+    """e.g. 'BAP, Ch. 5, pp. 205-206'"""
+    heading_path: str
+    source_id: str
+    lens: list[str] = []
+    score: float
+
+
 class ChatRequest(FilingRequest):
     question: str
     current_context: str
     selected_text: str | None = None
-    """LiteLLM model id, e.g. openai/gpt-4, anthropic/claude-3-5-sonnet-20241022."""
+    """LiteLLM model id, e.g. anthropic/claude-sonnet-5, openai/gpt-5.4."""
     llm_model: str | None = None
+    """Per-request cap for retrieved course material; 0 disables courseware for this question."""
+    courseware_max_chars: int | None = None
     """Per-request cap for main filing excerpt; server clamps to configured min/max."""
     current_context_max_chars: int | None = None
     """Per-request cap for comparison / additional filing text."""
@@ -49,3 +63,7 @@ class FilingFragmentResponse(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     source_quote: str | None = None
+    """Course material sent with this question, for attribution in the UI."""
+    citations: list[CoursewareCitation] = []
+    """Lens labels whose guidance shaped the answer, e.g. ['Financial statement analysis']."""
+    lenses: list[str] = []
