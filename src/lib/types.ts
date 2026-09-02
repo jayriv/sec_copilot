@@ -23,6 +23,14 @@ export type CoursewareCitation = {
   score: number;
 };
 
+/** One tool call the agent made (mirrors server AgentStep). */
+export type AgentStep = {
+  tool: string;
+  args: Record<string, unknown>;
+  chars: number;
+  preview: string;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -32,6 +40,8 @@ export type ChatMessage = {
   citations?: CoursewareCitation[];
   /** Lens labels whose guidance shaped the answer, e.g. ["Financial statement analysis"]. */
   lenses?: string[];
+  /** Tool calls the agent made, in order. Empty when the single-shot path ran. */
+  trace?: AgentStep[];
   /** User message created from filing selection (styled in thread order). */
   kind?: "selection" | "chat";
 };

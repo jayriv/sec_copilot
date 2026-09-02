@@ -60,6 +60,15 @@ class FilingFragmentResponse(BaseModel):
     html: str
 
 
+class AgentStep(BaseModel):
+    """One tool call the agent made, for the UI's reasoning trail."""
+
+    tool: str
+    args: dict = {}
+    chars: int = 0
+    preview: str = ""
+
+
 class ChatResponse(BaseModel):
     answer: str
     source_quote: str | None = None
@@ -67,3 +76,7 @@ class ChatResponse(BaseModel):
     citations: list[CoursewareCitation] = []
     """Lens labels whose guidance shaped the answer, e.g. ['Financial statement analysis']."""
     lenses: list[str] = []
+    """'agent' when the tool loop ran, 'single' for the one-shot path."""
+    mode: Literal["agent", "single"] = "single"
+    """Tool calls made, in order. Empty in single-shot mode."""
+    trace: list[AgentStep] = []

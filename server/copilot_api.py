@@ -4,9 +4,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from server import courseware
+import logging
+
+from server import agent, courseware
 from server.llm_service import ask_llm, courseware_char_cap
 from server.models import (
+    AgentStep,
     ChatRequest,
     ChatResponse,
     CoursewareCitation,
@@ -14,6 +17,8 @@ from server.models import (
     FilingFragmentResponse,
     FilingResponse,
 )
+
+logger = logging.getLogger(__name__)
 from server.path_normalize import NormalizeApiPathMiddleware
 from server.sec_service import get_filing_fragment_html, get_filing_text, maybe_get_comparison_context, prepare_filing_display
 
@@ -81,18 +86,65 @@ def filing_fragment(ticker: str, year: str, form_type: str, fragment: str) -> Fi
         raise HTTPException(status_code=500, detail=f"Failed to load section: {exc}") from exc
 
 
+def _chat_response(
+    answer: str,
+    source_quote: str,
+    passages: list,
+    *,
+    mode: str,
+    trace: list[dict] | None = None,
+) -> ChatResponse:
+    return ChatResponse(
+        answer=answer,
+        source_quote=source_quote,
+        citations=[
+            CoursewareCitation(
+                id=p.id,
+                citation=p.citation,
+                heading_path=p.heading_path,
+                source_id=p.source_id,
+                lens=p.lens,
+                score=round(p.score, 4),
+            )
+            for p in passages
+        ],
+        lenses=[label for _, label in courseware.dominant_lenses(passages)],
+        mode=mode,  # type: ignore[arg-type]
+        trace=[AgentStep(**step) for step in (trace or [])],
+    )
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     try:
+        sp = (payload.system_prompt or "").strip() or None
+        courseware_cap = courseware_char_cap(payload.courseware_max_chars)
+
+        if agent.agent_enabled():
+            try:
+                answer, source_quote, passages, trace = agent.run_agent(
+                    question=payload.question,
+                    ticker=payload.ticker,
+                    year=payload.year,
+                    form_type=payload.form_type,
+                    filing_text=payload.current_context,
+                    selected_text=payload.selected_text or "",
+                    llm_model=payload.llm_model,
+                    system_prompt=sp,
+                    courseware_max_chars=courseware_cap,
+                )
+                return _chat_response(answer, source_quote, passages, mode="agent", trace=trace)
+            except Exception:
+                # A model without tool support, a provider hiccup, or a bad tool
+                # loop must not cost the student an answer. Fall through.
+                logger.warning("Agent loop failed; falling back to single-shot.", exc_info=True)
+
         additional_context = maybe_get_comparison_context(
             question=payload.question,
             ticker=payload.ticker,
             year=payload.year,
             active_form_type=payload.form_type,
         )
-        sp = (payload.system_prompt or "").strip() or None
-
-        courseware_cap = courseware_char_cap(payload.courseware_max_chars)
         passages = []
         if courseware_cap > 0:
             # The selection is the strongest retrieval signal the app has: a student
@@ -117,22 +169,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
             courseware_context=courseware.format_passages(passages),
             lens_guidance=courseware.dominant_lens_guidance(passages),
         )
-        return ChatResponse(
-            answer=answer,
-            source_quote=source_quote,
-            citations=[
-                CoursewareCitation(
-                    id=p.id,
-                    citation=p.citation,
-                    heading_path=p.heading_path,
-                    source_id=p.source_id,
-                    lens=p.lens,
-                    score=round(p.score, 4),
-                )
-                for p in passages
-            ],
-            lenses=[label for _, label in courseware.dominant_lenses(passages)],
-        )
+        return _chat_response(answer, source_quote, passages, mode="single")
     except ValueError as exc:
         msg = str(exc).strip() or repr(exc)
         if "COPILOT_ALLOW_CLIENT_SYSTEM_PROMPT" in msg:

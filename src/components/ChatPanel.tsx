@@ -1,7 +1,18 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Sparkles, Wrench } from "lucide-react";
 import { ChatContextSliders } from "@/components/ChatContextSliders";
-import { ChatMessage } from "@/lib/types";
+import { AgentStep, ChatMessage } from "@/lib/types";
+
+/** The one argument worth showing per tool — what it looked for, not the schema. */
+function toolArgSummary(step: AgentStep): string {
+  const args = step.args ?? {};
+  const primary = args.query ?? args.section ?? args.expression;
+  if (typeof primary === "string" && primary) {
+    const scope = typeof args.year === "string" ? `${args.year} ${args.form_type ?? ""} — ` : "";
+    return `${scope}"${primary}"`;
+  }
+  return "";
+}
 
 const CONTEXT_EXPANDED_KEY = "sec-copilot-chat-context-expanded";
 
@@ -160,6 +171,25 @@ export const ChatPanel = ({
               </div>
             )}
             <div className="whitespace-pre-wrap">{message.content}</div>
+            {message.role === "assistant" && (message.trace?.length ?? 0) > 0 && (
+              <details className="mt-2 border-t border-white/15 pt-2">
+                <summary className="flex cursor-pointer items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-violet-200/80">
+                  <Wrench className="h-3 w-3 shrink-0" aria-hidden />
+                  {message.trace?.length} research{" "}
+                  {message.trace?.length === 1 ? "step" : "steps"}
+                </summary>
+                <ol className="mt-1.5 space-y-1">
+                  {message.trace?.map((step, i) => (
+                    <li key={`${step.tool}-${i}`} className="text-[0.65rem] text-violet-100/85">
+                      <span className="font-mono text-violet-200">{step.tool}</span>
+                      {toolArgSummary(step) && (
+                        <span className="text-violet-100/70"> · {toolArgSummary(step)}</span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
             {message.role === "assistant" && (message.citations?.length ?? 0) > 0 && (
               <div className="mt-2 border-t border-white/15 pt-2">
                 <div className="mb-1 flex flex-wrap items-center gap-x-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-violet-200/80">

@@ -21,7 +21,7 @@ import {
   persistCurrentContextMax
 } from "@/lib/copilotSettings";
 import { DEFAULT_LLM_MODEL, isKnownLlmModel, LLM_MODEL_STORAGE_KEY } from "@/lib/llmCatalog";
-import { ChatMessage, CoursewareCitation, FilingAnchor, FilingKey } from "@/lib/types";
+import { AgentStep, ChatMessage, CoursewareCitation, FilingAnchor, FilingKey } from "@/lib/types";
 
 type FilingResponse = {
   ticker: string;
@@ -48,6 +48,8 @@ type ChatResponse = {
   source_quote?: string;
   citations?: CoursewareCitationResponse[];
   lenses?: string[];
+  mode?: "agent" | "single";
+  trace?: AgentStep[];
 };
 
 type HealthResponse = {
@@ -287,7 +289,8 @@ export default function HomePage() {
         content: data.answer,
         sourceQuote: data.source_quote,
         citations,
-        lenses: data.lenses ?? []
+        lenses: data.lenses ?? [],
+        trace: data.trace ?? []
       };
       addMessage(assistantMessage);
       setSourceQuote(data.source_quote);
