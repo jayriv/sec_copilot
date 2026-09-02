@@ -4,8 +4,21 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from server.llm_service import ask_llm
-from server.models import ChatRequest, ChatResponse, FilingAnchorModel, FilingFragmentResponse, FilingResponse
+import logging
+
+from server import agent, courseware
+from server.llm_service import ask_llm, courseware_char_cap
+from server.models import (
+    AgentStep,
+    ChatRequest,
+    ChatResponse,
+    CoursewareCitation,
+    FilingAnchorModel,
+    FilingFragmentResponse,
+    FilingResponse,
+)
+
+logger = logging.getLogger(__name__)
 from server.path_normalize import NormalizeApiPathMiddleware
 from server.sec_service import get_filing_fragment_html, get_filing_text, maybe_get_comparison_context, prepare_filing_display
 
@@ -28,11 +41,12 @@ app.add_middleware(NormalizeApiPathMiddleware)
 
 
 @app.get("/health")
-def health() -> dict[str, str | bool]:
+def health() -> dict[str, object]:
     """Backend liveness; does not call SEC. EDGAR_IDENTITY is required for /filing and /chat."""
     return {
         "status": "ok",
         "edgar_identity_configured": bool(os.getenv("EDGAR_IDENTITY", "").strip()),
+        "courseware": courseware.status(),
     }
 
 
@@ -72,16 +86,77 @@ def filing_fragment(ticker: str, year: str, form_type: str, fragment: str) -> Fi
         raise HTTPException(status_code=500, detail=f"Failed to load section: {exc}") from exc
 
 
+def _chat_response(
+    answer: str,
+    source_quote: str,
+    passages: list,
+    *,
+    mode: str,
+    trace: list[dict] | None = None,
+) -> ChatResponse:
+    return ChatResponse(
+        answer=answer,
+        source_quote=source_quote,
+        citations=[
+            CoursewareCitation(
+                id=p.id,
+                citation=p.citation,
+                heading_path=p.heading_path,
+                source_id=p.source_id,
+                lens=p.lens,
+                score=round(p.score, 4),
+            )
+            for p in passages
+        ],
+        lenses=[label for _, label in courseware.dominant_lenses(passages)],
+        mode=mode,  # type: ignore[arg-type]
+        trace=[AgentStep(**step) for step in (trace or [])],
+    )
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     try:
+        sp = (payload.system_prompt or "").strip() or None
+        courseware_cap = courseware_char_cap(payload.courseware_max_chars)
+
+        if agent.agent_enabled():
+            try:
+                answer, source_quote, passages, trace = agent.run_agent(
+                    question=payload.question,
+                    ticker=payload.ticker,
+                    year=payload.year,
+                    form_type=payload.form_type,
+                    filing_text=payload.current_context,
+                    selected_text=payload.selected_text or "",
+                    llm_model=payload.llm_model,
+                    system_prompt=sp,
+                    courseware_max_chars=courseware_cap,
+                )
+                return _chat_response(answer, source_quote, passages, mode="agent", trace=trace)
+            except Exception:
+                # A model without tool support, a provider hiccup, or a bad tool
+                # loop must not cost the student an answer. Fall through.
+                logger.warning("Agent loop failed; falling back to single-shot.", exc_info=True)
+
         additional_context = maybe_get_comparison_context(
             question=payload.question,
             ticker=payload.ticker,
             year=payload.year,
             active_form_type=payload.form_type,
         )
-        sp = (payload.system_prompt or "").strip() or None
+        passages = []
+        if courseware_cap > 0:
+            # The selection is the strongest retrieval signal the app has: a student
+            # highlighting "deferred revenue" in a 10-K should surface the textbook
+            # section on revenue recognition. Retrieval must never break chat, so a
+            # failure here degrades to a filing-only answer.
+            query = " ".join(filter(None, [payload.question, payload.selected_text or ""])).strip()
+            try:
+                passages = courseware.fit_passages(courseware.retrieve(query), courseware_cap)
+            except Exception:
+                passages = []
+
         answer, source_quote = ask_llm(
             question=payload.question,
             current_context=payload.current_context,
@@ -91,8 +166,10 @@ def chat(payload: ChatRequest) -> ChatResponse:
             current_context_max_chars=payload.current_context_max_chars,
             additional_context_max_chars=payload.additional_context_max_chars,
             system_prompt_override=sp,
+            courseware_context=courseware.format_passages(passages),
+            lens_guidance=courseware.dominant_lens_guidance(passages),
         )
-        return ChatResponse(answer=answer, source_quote=source_quote)
+        return _chat_response(answer, source_quote, passages, mode="single")
     except ValueError as exc:
         msg = str(exc).strip() or repr(exc)
         if "COPILOT_ALLOW_CLIENT_SYSTEM_PROMPT" in msg:

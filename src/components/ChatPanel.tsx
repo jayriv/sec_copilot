@@ -1,7 +1,18 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Sparkles, Wrench } from "lucide-react";
 import { ChatContextSliders } from "@/components/ChatContextSliders";
-import { ChatMessage } from "@/lib/types";
+import { AgentStep, ChatMessage } from "@/lib/types";
+
+/** The one argument worth showing per tool — what it looked for, not the schema. */
+function toolArgSummary(step: AgentStep): string {
+  const args = step.args ?? {};
+  const primary = args.query ?? args.section ?? args.expression;
+  if (typeof primary === "string" && primary) {
+    const scope = typeof args.year === "string" ? `${args.year} ${args.form_type ?? ""} — ` : "";
+    return `${scope}"${primary}"`;
+  }
+  return "";
+}
 
 const CONTEXT_EXPANDED_KEY = "sec-copilot-chat-context-expanded";
 
@@ -14,12 +25,20 @@ type Props = {
   onMinimize?: () => void;
   /** Show sparkles in header when true (docked overlay). */
   showSparkleBrand?: boolean;
+  /**
+   * Open-courseware attribution strings. CC licenses require attribution wherever
+   * excerpts are shown, so this renders once under the thread when any answer
+   * actually drew on course material.
+   */
+  coursewareAttributions?: string[];
   /** Per-prompt context size controls (optional). */
   contextSettings?: {
     currentContextMax: number;
     additionalContextMax: number;
+    coursewareContextMax: number;
     onCurrentContextMaxChange: (value: number) => void;
     onAdditionalContextMaxChange: (value: number) => void;
+    onCoursewareContextMaxChange: (value: number) => void;
   };
 };
 
@@ -31,8 +50,10 @@ export const ChatPanel = ({
   onSubmit,
   onMinimize,
   showSparkleBrand = true,
+  coursewareAttributions,
   contextSettings
 }: Props) => {
+  const usedCourseware = messages.some((m) => (m.citations?.length ?? 0) > 0);
   const [input, setInput] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -109,8 +130,10 @@ export const ChatPanel = ({
               <ChatContextSliders
                 currentContextMax={contextSettings.currentContextMax}
                 additionalContextMax={contextSettings.additionalContextMax}
+                coursewareContextMax={contextSettings.coursewareContextMax}
                 onCurrentContextMaxChange={contextSettings.onCurrentContextMaxChange}
                 onAdditionalContextMaxChange={contextSettings.onAdditionalContextMaxChange}
+                onCoursewareContextMaxChange={contextSettings.onCoursewareContextMaxChange}
               />
             </div>
           )}
@@ -148,6 +171,49 @@ export const ChatPanel = ({
               </div>
             )}
             <div className="whitespace-pre-wrap">{message.content}</div>
+            {message.role === "assistant" && (message.trace?.length ?? 0) > 0 && (
+              <details className="mt-2 border-t border-white/15 pt-2">
+                <summary className="flex cursor-pointer items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-violet-200/80">
+                  <Wrench className="h-3 w-3 shrink-0" aria-hidden />
+                  {message.trace?.length} research{" "}
+                  {message.trace?.length === 1 ? "step" : "steps"}
+                </summary>
+                <ol className="mt-1.5 space-y-1">
+                  {message.trace?.map((step, i) => (
+                    <li key={`${step.tool}-${i}`} className="text-[0.65rem] text-violet-100/85">
+                      <span className="font-mono text-violet-200">{step.tool}</span>
+                      {toolArgSummary(step) && (
+                        <span className="text-violet-100/70"> · {toolArgSummary(step)}</span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
+            {message.role === "assistant" && (message.citations?.length ?? 0) > 0 && (
+              <div className="mt-2 border-t border-white/15 pt-2">
+                <div className="mb-1 flex flex-wrap items-center gap-x-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-violet-200/80">
+                  <BookOpen className="h-3 w-3 shrink-0" aria-hidden />
+                  Course material
+                  {(message.lenses?.length ?? 0) > 0 && (
+                    <span className="font-normal normal-case tracking-normal text-violet-200/60">
+                      · {message.lenses?.join(" · ")}
+                    </span>
+                  )}
+                </div>
+                <ul className="flex flex-wrap gap-1">
+                  {message.citations?.map((citation) => (
+                    <li
+                      key={citation.id}
+                      className="rounded-md bg-white/10 px-1.5 py-0.5 text-[0.65rem] text-violet-100"
+                      title={citation.headingPath}
+                    >
+                      {citation.citation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         ))}
         {isLoading && (
@@ -158,6 +224,13 @@ export const ChatPanel = ({
         )}
         <div ref={bottomRef} aria-hidden />
       </div>
+      {usedCourseware && (coursewareAttributions?.length ?? 0) > 0 && (
+        <div className="mb-2 shrink-0 border-t border-violet-100 pt-2 text-[0.6rem] leading-snug text-violet-900/55">
+          {coursewareAttributions?.map((attribution) => (
+            <div key={attribution}>{attribution}</div>
+          ))}
+        </div>
+      )}
       <form onSubmit={submit} className="flex shrink-0 gap-2">
         <input
           value={input}

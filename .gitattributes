@@ -1,0 +1,14 @@
+# The courseware index is byte-addressed: chunks.offsets.npy stores byte offsets
+# into chunks.jsonl so a query can seek to the k lines it needs without loading
+# the file. ANY newline translation shifts every offset and silently breaks
+# retrieval — observed with core.autocrlf=true, which rewrote all 1222 LF
+# terminators to CRLF on a checkout and made every seek land mid-line.
+#
+# Git must not touch these files.
+courseware/index/**/*.jsonl -text
+courseware/index/**/*.npy binary
+
+# Keep server/client prompt copies byte-identical across platforms; they are
+# compared for equality by the sync check.
+src/lib/defaultSystemPrompt.ts text eol=lf
+server/llm_service.py text eol=lf

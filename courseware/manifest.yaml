@@ -1,0 +1,121 @@
+# SEC Copilot -- open courseware corpus.
+#
+# Adding a textbook is: drop the PDF in sources/, add a `sources:` entry,
+# run `python scripts/ingest_courseware.py`. Nothing else changes -- not the
+# retriever, not the prompt, not the tool schema. Lenses are metadata, so a
+# new book joins existing lenses or declares a new one here.
+#
+# See courseware/README.md for the full walkthrough.
+
+version: 1
+
+embedding:
+  # Pinned here and recorded in index.meta.json; server/courseware.py refuses
+  # to load an index whose model/dimensions disagree with its own config.
+  # 512 dims uses text-embedding-3's Matryoshka truncation: 3x smaller than
+  # the native 1536 with negligible retrieval loss.
+  model: text-embedding-3-small
+  dimensions: 512
+  batch_size: 96
+
+chunking:
+  target_tokens: 750
+  overlap_tokens: 110
+  # Drop fragments below this -- usually stray captions or page furniture.
+  min_tokens: 80
+
+# ---------------------------------------------------------------------------
+# Lenses: analytical postures, not documents.
+#
+# `guidance` is injected into the system prompt when a lens dominates the
+# retrieved evidence, so a lens changes HOW the copilot reasons, not just
+# which paragraphs come back. Declare a lens before you have a source for it;
+# an unused lens costs nothing.
+# ---------------------------------------------------------------------------
+lenses:
+  financial-accounting:
+    label: Financial accounting
+    description: >-
+      Recognition, measurement, and presentation of transactions in the
+      financial statements.
+    guidance: |
+      Trace every figure to a specific financial statement line item. Check the
+      accounting policy notes before asserting how something was recognized or
+      measured. Distinguish clearly between what the standards require and what
+      management elected among permitted alternatives.
+
+  financial-statement-analysis:
+    label: Financial statement analysis
+    description: >-
+      Ratios, trends, cash flow analysis, and cross-period comparison.
+    guidance: |
+      Define each ratio before computing it, and show the inputs you used and
+      the statement lines they came from. A ratio is uninterpretable alone --
+      compare against the prior period or a stated benchmark, and say which.
+      Name the limitation of the measure when one materially applies.
+
+  managerial-accounting:
+    label: Managerial and cost accounting
+    description: >-
+      Costing systems, budgeting, variance analysis, and internal decision
+      support.
+    guidance: |
+      Separate cost behavior (fixed, variable, mixed) before analyzing. State
+      whether the figure is a relevant cost for the decision at hand, and
+      ignore sunk costs explicitly rather than silently.
+
+  # Declared ahead of the source. Drop a valuation text in and tag it
+  # `valuation` -- no code change.
+  valuation:
+    label: Valuation
+    description: >-
+      Intrinsic and relative valuation, cost of capital, forecasting.
+    guidance: |
+      Name the value driver before computing anything. State every assumption
+      explicitly and label it as an assumption, never as a fact from the
+      filing. Sanity-check any multiple or growth rate against a stated peer
+      or historical range instead of asserting a point estimate.
+
+  audit:
+    label: Audit and assurance
+    description: >-
+      Evidence, internal control, going concern, and earnings quality.
+    guidance: |
+      Consider what evidence would corroborate or contradict the assertion.
+      Flag earnings-quality signals (accrual behavior, one-time items, changes
+      in estimate) as questions to investigate, never as accusations.
+
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+sources:
+  - id: bap
+    citation_label: BAP
+    title: "Accounting Principles: A Business Perspective"
+    authors:
+      - Roger H. Hermanson
+      - James Don Edwards
+      - Michael W. Maher
+    publisher: Global Text Project
+    year: 2011
+    # Stated verbatim in the running header of every page of the source PDF.
+    license: CC BY 3.0
+    license_url: https://creativecommons.org/licenses/by/3.0/
+    attribution: >-
+      "Accounting Principles: A Business Perspective" by Hermanson, Edwards &
+      Maher, Global Text Project, licensed CC BY 3.0.
+    url: https://openlibrary-repo.ecampusontario.ca/jspui/handle/123456789/240
+    path: sources/accounting-principles-bap.pdf
+
+    # PDF pages before the first real content (title, TOC, preface).
+    skip_pages: "1-16"
+    # printed book page = pdf page + N. `auto` detects it from page footers.
+    printed_page_offset: auto
+
+    default_lens: [financial-accounting]
+    # Chapter numbers parsed from the embedded TOC. Later rules win.
+    lens_overrides:
+      - chapters: "16-17"
+        lens: [financial-accounting, financial-statement-analysis]
+      - chapters: "18-26"
+        lens: [managerial-accounting]

@@ -10,15 +10,18 @@ import { loadRecents } from "@/lib/storage";
 import { LlmModelPicker } from "@/components/LlmModelPicker";
 import {
   DEFAULT_ADDITIONAL_CONTEXT_MAX,
+  DEFAULT_COURSEWARE_CONTEXT_MAX,
   DEFAULT_CURRENT_CONTEXT_MAX,
   loadAdditionalContextMax,
+  loadCoursewareContextMax,
   loadCurrentContextMax,
   getEffectiveSystemPromptForRequest,
   persistAdditionalContextMax,
+  persistCoursewareContextMax,
   persistCurrentContextMax
 } from "@/lib/copilotSettings";
 import { DEFAULT_LLM_MODEL, isKnownLlmModel, LLM_MODEL_STORAGE_KEY } from "@/lib/llmCatalog";
-import { ChatMessage, FilingAnchor, FilingKey } from "@/lib/types";
+import { AgentStep, ChatMessage, CoursewareCitation, FilingAnchor, FilingKey } from "@/lib/types";
 
 type FilingResponse = {
   ticker: string;
@@ -31,9 +34,30 @@ type FilingResponse = {
   cached?: boolean;
 };
 
+type CoursewareCitationResponse = {
+  id: string;
+  citation: string;
+  heading_path: string;
+  source_id: string;
+  lens?: string[];
+  score: number;
+};
+
 type ChatResponse = {
   answer: string;
   source_quote?: string;
+  citations?: CoursewareCitationResponse[];
+  lenses?: string[];
+  mode?: "agent" | "single";
+  trace?: AgentStep[];
+};
+
+type HealthResponse = {
+  edgar_identity_configured?: boolean;
+  courseware?: {
+    available?: boolean;
+    sources?: { attribution?: string }[];
+  };
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
@@ -71,10 +95,13 @@ export default function HomePage() {
   const [chatModel, setChatModel] = useState(DEFAULT_LLM_MODEL);
   const [currentContextMax, setCurrentContextMax] = useState(DEFAULT_CURRENT_CONTEXT_MAX);
   const [additionalContextMax, setAdditionalContextMax] = useState(DEFAULT_ADDITIONAL_CONTEXT_MAX);
+  const [coursewareContextMax, setCoursewareContextMax] = useState(DEFAULT_COURSEWARE_CONTEXT_MAX);
+  const [coursewareAttributions, setCoursewareAttributions] = useState<string[]>([]);
 
   useEffect(() => {
     setCurrentContextMax(loadCurrentContextMax());
     setAdditionalContextMax(loadAdditionalContextMax());
+    setCoursewareContextMax(loadCoursewareContextMax());
   }, []);
 
   useEffect(() => {
@@ -84,6 +111,10 @@ export default function HomePage() {
   useEffect(() => {
     persistAdditionalContextMax(additionalContextMax);
   }, [additionalContextMax]);
+
+  useEffect(() => {
+    persistCoursewareContextMax(coursewareContextMax);
+  }, [coursewareContextMax]);
 
   useEffect(() => {
     try {
@@ -115,8 +146,13 @@ export default function HomePage() {
           setHealthStatus(response.ok ? "online" : "offline");
           if (response.ok) {
             try {
-              const body = (await response.json()) as { edgar_identity_configured?: boolean };
+              const body = (await response.json()) as HealthResponse;
               setEdgarIdentityOk(Boolean(body.edgar_identity_configured));
+              setCoursewareAttributions(
+                (body.courseware?.sources ?? [])
+                  .map((source) => source.attribution ?? "")
+                  .filter((attribution) => attribution.length > 0)
+              );
             } catch {
               setEdgarIdentityOk(null);
             }
@@ -213,6 +249,7 @@ export default function HomePage() {
       llm_model: chatModel,
       current_context_max_chars: currentContextMax,
       additional_context_max_chars: additionalContextMax,
+      courseware_max_chars: coursewareContextMax,
       ...(sp ? { system_prompt: sp } : {})
     };
     setIsAsking(true);
@@ -238,11 +275,22 @@ export default function HomePage() {
         throw new Error(msg);
       }
       const data = (await response.json()) as ChatResponse;
+      const citations: CoursewareCitation[] = (data.citations ?? []).map((citation) => ({
+        id: citation.id,
+        citation: citation.citation,
+        headingPath: citation.heading_path,
+        sourceId: citation.source_id,
+        lens: citation.lens ?? [],
+        score: citation.score
+      }));
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: data.answer,
-        sourceQuote: data.source_quote
+        sourceQuote: data.source_quote,
+        citations,
+        lenses: data.lenses ?? [],
+        trace: data.trace ?? []
       };
       addMessage(assistantMessage);
       setSourceQuote(data.source_quote);
@@ -378,11 +426,14 @@ export default function HomePage() {
                 onSubmit={onSubmitChat}
                 onMinimize={() => setChatDocked(false)}
                 showSparkleBrand
+                coursewareAttributions={coursewareAttributions}
                 contextSettings={{
                   currentContextMax,
                   additionalContextMax,
+                  coursewareContextMax,
                   onCurrentContextMaxChange: setCurrentContextMax,
-                  onAdditionalContextMaxChange: setAdditionalContextMax
+                  onAdditionalContextMaxChange: setAdditionalContextMax,
+                  onCoursewareContextMaxChange: setCoursewareContextMax
                 }}
               />
             </div>

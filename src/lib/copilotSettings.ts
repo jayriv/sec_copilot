@@ -2,6 +2,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "@/lib/defaultSystemPrompt";
 
 export const COPILOT_CURRENT_CONTEXT_MAX_KEY = "sec-copilot-current-context-max-chars";
 export const COPILOT_ADDITIONAL_CONTEXT_MAX_KEY = "sec-copilot-additional-context-max-chars";
+export const COPILOT_COURSEWARE_CONTEXT_MAX_KEY = "sec-copilot-courseware-context-max-chars";
 /** Saved textarea content (draft); may be the built-in default text for editing. */
 export const COPILOT_SYSTEM_PROMPT_DRAFT_KEY = "sec-copilot-system-prompt-override";
 export const COPILOT_USE_CUSTOM_SYSTEM_PROMPT_KEY = "sec-copilot-use-custom-system-prompt";
@@ -10,10 +11,15 @@ export const COPILOT_USE_CUSTOM_SYSTEM_PROMPT_KEY = "sec-copilot-use-custom-syst
 export const DEFAULT_CURRENT_CONTEXT_MAX = 80_000;
 export const DEFAULT_ADDITIONAL_CONTEXT_MAX = 60_000;
 
+export const DEFAULT_COURSEWARE_CONTEXT_MAX = 12_000;
+
 export const SLIDER_CURRENT_MIN = 5_000;
 export const SLIDER_CURRENT_MAX = 120_000;
 export const SLIDER_ADDITIONAL_MIN = 0;
 export const SLIDER_ADDITIONAL_MAX = 80_000;
+/** 0 turns courseware off for the question, skipping retrieval entirely. */
+export const SLIDER_COURSEWARE_MIN = 0;
+export const SLIDER_COURSEWARE_MAX = 24_000;
 
 function readInt(key: string, fallback: number): number {
   try {
@@ -36,6 +42,20 @@ export function loadAdditionalContextMax(): number {
   if (typeof window === "undefined") return DEFAULT_ADDITIONAL_CONTEXT_MAX;
   const n = readInt(COPILOT_ADDITIONAL_CONTEXT_MAX_KEY, DEFAULT_ADDITIONAL_CONTEXT_MAX);
   return Math.min(SLIDER_ADDITIONAL_MAX, Math.max(SLIDER_ADDITIONAL_MIN, n));
+}
+
+export function loadCoursewareContextMax(): number {
+  if (typeof window === "undefined") return DEFAULT_COURSEWARE_CONTEXT_MAX;
+  const n = readInt(COPILOT_COURSEWARE_CONTEXT_MAX_KEY, DEFAULT_COURSEWARE_CONTEXT_MAX);
+  return Math.min(SLIDER_COURSEWARE_MAX, Math.max(SLIDER_COURSEWARE_MIN, n));
+}
+
+export function persistCoursewareContextMax(value: number): void {
+  try {
+    window.localStorage.setItem(COPILOT_COURSEWARE_CONTEXT_MAX_KEY, String(value));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function persistCurrentContextMax(value: number): void {

@@ -5,6 +5,8 @@ Minimalist, session-aware SEC filing research app.
 ## Stack
 - Frontend: Next.js + Tailwind + Lucide
 - Backend: FastAPI on Vercel Python serverless (`api/index.py`) + `edgartools` + `litellm`
+- Chat model: **Claude Sonnet 5** by default (`anthropic/claude-sonnet-5`); switchable per user in the model picker
+- Grounding: open-courseware retrieval over a committed vector index (see [courseware/README.md](courseware/README.md))
 - Persistence: Browser `localStorage` keyed by `ticker + year + formType`
 
 ## Local development
@@ -14,7 +16,8 @@ From the repository root:
 1. Python 3.12+ and Node.js 18+ recommended.
 2. Create a local env file (not committed):
    - Copy `.env.example` to `.env` in the project root.
-   - Fill `OPENAI_API_KEY`, `EDGAR_IDENTITY`, and optional `LITELLM_MODEL` (`gpt-4` default).
+   - Fill `EDGAR_IDENTITY`, `ANTHROPIC_API_KEY` (default chat model), and `OPENAI_API_KEY` (courseware embeddings).
+   - `LITELLM_MODEL` **overrides** the built-in default; leave it unset or set it to `anthropic/claude-sonnet-5`.
 3. Install JS dependencies: `npm install`
 4. Run both servers: `npm run dev`
    - Next.js: `http://localhost:3000` (proxies `/api/py/*` to FastAPI)
@@ -28,9 +31,10 @@ Filings are returned as **plain text** (for the LLM) and, when available, **HTML
 
 1. Import this GitHub repo in Vercel (framework: Next.js; root directory: repo root — default).
 2. In **Project → Settings → Environment Variables**, add:
-   - `OPENAI_API_KEY`
+   - `ANTHROPIC_API_KEY` (required for the default chat model, Claude Sonnet 5)
+   - `OPENAI_API_KEY` (required for courseware retrieval embeddings)
    - `EDGAR_IDENTITY` (format: `Your Name your@email.com`)
-   - `LITELLM_MODEL` (`gpt-4` or your chosen model)
+   - `LITELLM_MODEL` (`anthropic/claude-sonnet-5`; **overrides** the code default if set to something else)
    - Optional: `EDGAR_LOCAL_DATA_DIR` — **`api/index.py` sets this under `gettempdir()/edgartools` automatically** on Vercel / Lambda-style runtimes ([local storage guide](https://edgartools.readthedocs.io/en/stable/guides/local-storage/)). Override if your host still tries to use a read-only home directory.
 3. Deploy. The frontend uses same-origin requests to `/api/py/*` by default (no `NEXT_PUBLIC_API_BASE_URL` needed).
 
@@ -38,6 +42,9 @@ If the UI shows **api offline**, open `/api/py/health` on your deployment in the
 4. Optional: set **Function** max duration / plan limits; `vercel.json` requests up to 60s for `api/index.py` (requires a plan that supports it).
 
 ### Notes
+- **Course material:** answers are grounded in open textbooks indexed under `courseware/`. Retrieval runs per question, is capped by the **Course material** slider (0 = off), and returns citations shown as chips under each answer. Company facts always come from the filing; the textbook supplies concepts only. Adding a book is a manifest entry plus one script run — see [courseware/README.md](courseware/README.md).
+- **Model choice:** the picker shows per-1M pricing. Weaker models drop the inline-citation requirement (measured: `gpt-4o-mini` omits citations that `gpt-4o`, `gpt-5.4-mini`, and Sonnet 5 produce), so prefer a mid-tier model or better for student-facing answers.
+- **Agent mode (on by default; `COPILOT_AGENT_MODE=0` to disable):** instead of stuffing the filing into one prompt, the copilot gets five tools — `search_filing`, `get_filing_section`, `search_course_material`, `search_other_filing`, `calc` — and decides what to look up. Tools are split by verb, not by document, so adding textbooks never adds tools. This fixes three things the single-shot path cannot: `_smart_excerpt` drops the middle of a filing (often MD&A and the notes), `maybe_get_comparison_context` routes comparisons by regex, and multi-hop questions need concept → policy → comparison. Bounded by `COPILOT_AGENT_MAX_TURNS` and `COPILOT_AGENT_TIME_BUDGET_S`; the last turn always answers with tools withheld, and any failure falls back to the single-shot path. Answers carry a collapsible research trail.
 - **Context size & system prompt:** The chat panel includes sliders for **current filing** and **additional (comparison) context** character caps (saved in the browser). The **Admin** page (`/admin`) pre-fills the default system prompt for editing; enable **Use custom prompt** to send your saved text with chat. The API accepts client prompts only when **`COPILOT_ALLOW_CLIENT_SYSTEM_PROMPT=1`** is set (see `.env.example`). Optional **`COPILOT_SYSTEM_PROMPT`** sets the server default when the UI does not send an override.
 - Python + Next.js in one project follows the common pattern: Next rewrites `/api/py/:path*` to the Python serverless entry in production, and to `localhost:8000` in development (see `next.config.js`). In production the rewrite target is **`/api/`** (not `/api/:path*`): on Vercel, only the bare `/api` path invokes `api/index.py`; rewriting to `/api/health` is handled by Next.js and returns 404 unless you use `/api/`.
 - Serverless bundles must stay within Vercel size limits; large scientific stacks may require trimming dependencies.

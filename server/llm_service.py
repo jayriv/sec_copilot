@@ -2,18 +2,32 @@ import os
 
 from litellm import completion
 
+# Keep in sync with DEFAULT_SYSTEM_PROMPT in src/lib/defaultSystemPrompt.ts.
 DEFAULT_SYSTEM_PROMPT = (
-    "You are SEC Copilot. Answer using only the excerpts below. "
+    "You are SEC Copilot, helping a student understand and analyze financial statements. "
+    "Answer using only the material provided below. "
     "When 'Additional context' contains another SEC filing or year, use it for comparisons or questions about that period. "
     "If an answer appears in 'Current filing context', state it and quote it; do not claim numbers are absent when they appear there. "
     "If you cannot find a figure in the excerpts (including after truncation), say it is not in the provided excerpt—not that the filing has no such data. "
+    "'Course material' is open textbook explanation, not this company's data. Every company-specific fact, figure, "
+    "date, and accounting policy must come from the filing context alone; never present a textbook's illustrative "
+    "numbers as this company's. "
+    "Whenever you explain a concept, method, definition, or term that appears in Course material, you must cite the "
+    "passage inline in square brackets, copying the label exactly as it appears there — for example [BAP, Ch. 7, pp. 298-299]. "
+    "An explanation drawn from course material without its citation is incomplete. Cite nothing when course material is '(none)'. "
     "Return one short verbatim source quote from the current filing when possible."
 )
+
+# Sonnet 5 ($2/$10 per 1M tokens) is the default for user-facing answers: strong
+# enough for financial-statement reasoning without Opus pricing on a student app.
+DEFAULT_MODEL = "anthropic/claude-sonnet-5"
 
 _CURRENT_MIN = int(os.getenv("COPILOT_CURRENT_CONTEXT_CHARS_MIN", "2000"))
 _CURRENT_MAX = int(os.getenv("COPILOT_CURRENT_CONTEXT_CHARS_MAX", "120000"))
 _ADDITIONAL_MIN = int(os.getenv("COPILOT_ADDITIONAL_CONTEXT_CHARS_MIN", "0"))
 _ADDITIONAL_MAX = int(os.getenv("COPILOT_ADDITIONAL_CONTEXT_CHARS_MAX", "80000"))
+_COURSEWARE_MIN = int(os.getenv("COPILOT_COURSEWARE_CONTEXT_CHARS_MIN", "0"))
+_COURSEWARE_MAX = int(os.getenv("COPILOT_COURSEWARE_CONTEXT_CHARS_MAX", "24000"))
 
 
 def _clamp(n: int, lo: int, hi: int) -> int:
@@ -35,6 +49,15 @@ def _smart_excerpt(text: str, max_chars: int) -> str:
     )
 
 
+def resolve_model(llm_model: str | None = None) -> str:
+    return (llm_model or "").strip() or os.getenv("LITELLM_MODEL", DEFAULT_MODEL).strip()
+
+
+def courseware_char_cap(requested: int | None = None) -> int:
+    base = int(os.getenv("COPILOT_COURSEWARE_CONTEXT_CHARS", "12000"))
+    return _clamp(requested if requested is not None else base, _COURSEWARE_MIN, _COURSEWARE_MAX)
+
+
 def ask_llm(
     question: str,
     current_context: str,
@@ -45,8 +68,10 @@ def ask_llm(
     current_context_max_chars: int | None = None,
     additional_context_max_chars: int | None = None,
     system_prompt_override: str | None = None,
+    courseware_context: str = "",
+    lens_guidance: str = "",
 ) -> tuple[str, str]:
-    model = (llm_model or "").strip() or os.getenv("LITELLM_MODEL", "openai/gpt-4").strip()
+    model = resolve_model(llm_model)
 
     base_current = int(os.getenv("COPILOT_CURRENT_CONTEXT_CHARS", "80000"))
     base_additional = int(os.getenv("COPILOT_ADDITIONAL_CONTEXT_CHARS", "60000"))
@@ -78,11 +103,25 @@ def ask_llm(
         system_prompt = str(system_prompt_override).strip()
     else:
         system_prompt = os.getenv("COPILOT_SYSTEM_PROMPT", "").strip() or DEFAULT_SYSTEM_PROMPT
+
+    # Lens guidance is appended rather than folded into the base prompt: it is
+    # chosen per-question from what retrieval actually returned, and it applies
+    # on top of a custom prompt too.
+    if lens_guidance.strip():
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            "Apply the following analytical guidance, which matches the course material "
+            "retrieved for this question:\n"
+            f"{lens_guidance.strip()}"
+        )
+
     user_prompt = (
         f"Question:\n{question}\n\n"
         f"Selected text:\n{selected_text or '(none)'}\n\n"
         f"Current filing context:\n{current_excerpt}\n\n"
         f"Additional context:\n{additional_excerpt or '(none)'}\n\n"
+        f"Course material (open textbook — explanation only, not this company's data):\n"
+        f"{courseware_context or '(none)'}\n\n"
         "Output format:\nANSWER: <answer>\nSOURCE_QUOTE: <quote or none>"
     )
 
