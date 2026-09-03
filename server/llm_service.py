@@ -20,9 +20,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "Return one short verbatim source quote from the current filing when possible."
 )
 
-# Sonnet 5 ($2/$10 per 1M tokens) is the default for user-facing answers: strong
-# enough for financial-statement reasoning without Opus pricing on a student app.
-DEFAULT_MODEL = "anthropic/claude-sonnet-5"
+# Measured per whole question on the agent loop: gpt-5.4-mini costs $0.004 and
+# 3.7s while citing correctly, against $0.019 for gpt-4o and $0.635 / 80s for
+# gpt-4 (which also exceeds the 60s function limit). Keep in sync with
+# DEFAULT_LLM_MODEL in src/lib/llmCatalog.ts.
+DEFAULT_MODEL = "openai/gpt-5.4-mini"
 
 _CURRENT_MIN = int(os.getenv("COPILOT_CURRENT_CONTEXT_CHARS_MIN", "2000"))
 _CURRENT_MAX = int(os.getenv("COPILOT_CURRENT_CONTEXT_CHARS_MAX", "120000"))

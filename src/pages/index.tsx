@@ -21,7 +21,8 @@ import {
   persistCurrentContextMax
 } from "@/lib/copilotSettings";
 import { DEFAULT_LLM_MODEL, isKnownLlmModel, LLM_MODEL_STORAGE_KEY } from "@/lib/llmCatalog";
-import { AgentStep, ChatMessage, CoursewareCitation, FilingAnchor, FilingKey } from "@/lib/types";
+import { ChatMessage, CoursewareCitation, FilingAnchor, FilingKey } from "@/lib/types";
+import { askCopilot, ProgressStep } from "@/lib/chatStream";
 
 type FilingResponse = {
   ticker: string;
@@ -34,23 +35,6 @@ type FilingResponse = {
   cached?: boolean;
 };
 
-type CoursewareCitationResponse = {
-  id: string;
-  citation: string;
-  heading_path: string;
-  source_id: string;
-  lens?: string[];
-  score: number;
-};
-
-type ChatResponse = {
-  answer: string;
-  source_quote?: string;
-  citations?: CoursewareCitationResponse[];
-  lenses?: string[];
-  mode?: "agent" | "single";
-  trace?: AgentStep[];
-};
 
 type HealthResponse = {
   edgar_identity_configured?: boolean;
@@ -97,6 +81,7 @@ export default function HomePage() {
   const [additionalContextMax, setAdditionalContextMax] = useState(DEFAULT_ADDITIONAL_CONTEXT_MAX);
   const [coursewareContextMax, setCoursewareContextMax] = useState(DEFAULT_COURSEWARE_CONTEXT_MAX);
   const [coursewareAttributions, setCoursewareAttributions] = useState<string[]>([]);
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
 
   useEffect(() => {
     setCurrentContextMax(loadCurrentContextMax());
@@ -253,28 +238,9 @@ export default function HomePage() {
       ...(sp ? { system_prompt: sp } : {})
     };
     setIsAsking(true);
+    setProgressSteps([]);
     try {
-      const response = await fetch(`${apiBase}${apiPrefix}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        let msg = "Chat request failed.";
-        try {
-          const errBody = (await response.json()) as { detail?: unknown };
-          if (errBody.detail !== undefined) {
-            msg =
-              typeof errBody.detail === "string"
-                ? errBody.detail
-                : JSON.stringify(errBody.detail);
-          }
-        } catch {
-          /* keep default */
-        }
-        throw new Error(msg);
-      }
-      const data = (await response.json()) as ChatResponse;
+      const data = await askCopilot(`${apiBase}${apiPrefix}`, payload, setProgressSteps);
       const citations: CoursewareCitation[] = (data.citations ?? []).map((citation) => ({
         id: citation.id,
         citation: citation.citation,
@@ -299,6 +265,7 @@ export default function HomePage() {
       setErrorMessage(error instanceof Error ? error.message : "Could not get answer.");
     } finally {
       setIsAsking(false);
+      setProgressSteps([]);
     }
   };
 
@@ -427,6 +394,7 @@ export default function HomePage() {
                 onMinimize={() => setChatDocked(false)}
                 showSparkleBrand
                 coursewareAttributions={coursewareAttributions}
+                progressSteps={progressSteps}
                 contextSettings={{
                   currentContextMax,
                   additionalContextMax,

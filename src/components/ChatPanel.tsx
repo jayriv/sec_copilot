@@ -2,6 +2,27 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, Sparkles, Wrench } from "lucide-react";
 import { ChatContextSliders } from "@/components/ChatContextSliders";
 import { AgentStep, ChatMessage } from "@/lib/types";
+import { ProgressStep } from "@/lib/chatStream";
+
+/** Plain-language label for a tool call, shown live while the agent works. */
+function stepLabel(step: { tool: string; args: Record<string, unknown> }): string {
+  const args = step.args ?? {};
+  const q = typeof args.query === "string" ? args.query : "";
+  switch (step.tool) {
+    case "search_filing":
+      return q ? `Searching the filing for "${q}"` : "Searching the filing";
+    case "get_filing_section":
+      return `Reading ${typeof args.section === "string" ? args.section : "a section"}`;
+    case "search_course_material":
+      return q ? `Looking up "${q}" in the textbook` : "Looking up course material";
+    case "search_other_filing":
+      return `Checking the ${args.year ?? ""} ${args.form_type ?? "filing"}`.replace(/\s+/g, " ").trim();
+    case "calc":
+      return "Calculating";
+    default:
+      return step.tool;
+  }
+}
 
 /** The one argument worth showing per tool — what it looked for, not the schema. */
 function toolArgSummary(step: AgentStep): string {
@@ -31,6 +52,8 @@ type Props = {
    * actually drew on course material.
    */
   coursewareAttributions?: string[];
+  /** Tool calls in flight, rendered instead of a bare spinner. */
+  progressSteps?: ProgressStep[];
   /** Per-prompt context size controls (optional). */
   contextSettings?: {
     currentContextMax: number;
@@ -51,6 +74,7 @@ export const ChatPanel = ({
   onMinimize,
   showSparkleBrand = true,
   coursewareAttributions,
+  progressSteps,
   contextSettings
 }: Props) => {
   const usedCourseware = messages.some((m) => (m.citations?.length ?? 0) > 0);
@@ -217,9 +241,23 @@ export const ChatPanel = ({
           </div>
         ))}
         {isLoading && (
-          <div className="flex items-center gap-2 rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-sm text-violet-900/80">
-            <Sparkles className="h-4 w-4 shrink-0 animate-pulse text-violet-600" />
-            Thinking…
+          <div className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2 text-sm text-violet-900/80">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0 animate-pulse text-violet-600" />
+              {(progressSteps?.length ?? 0) > 0 ? "Researching…" : "Thinking…"}
+            </div>
+            {(progressSteps?.length ?? 0) > 0 && (
+              <ol className="mt-1.5 space-y-0.5 pl-6">
+                {progressSteps?.map((step, i) => (
+                  <li
+                    key={`${step.tool}-${i}`}
+                    className={`text-xs ${step.done ? "text-violet-900/55" : "text-violet-900/85"}`}
+                  >
+                    <span aria-hidden>{step.done ? "✓" : "→"}</span> {stepLabel(step)}
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         )}
         <div ref={bottomRef} aria-hidden />

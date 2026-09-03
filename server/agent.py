@@ -33,7 +33,7 @@ import operator
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterator
 
 from litellm import completion
 
@@ -319,7 +319,7 @@ def _run_tool(name: str, args: dict[str, Any], ctx: AgentContext) -> str:
 # ---------------------------------------------------------------------------
 
 
-def run_agent(
+def run_agent_events(
     question: str,
     *,
     ticker: str,
@@ -331,8 +331,15 @@ def run_agent(
     system_prompt: str | None = None,
     courseware_max_chars: int = 12000,
     usage: Usage | None = None,
-) -> tuple[str, str, list[Any], list[dict[str, Any]]]:
-    """Returns (answer, source_quote, courseware_passages, trace)."""
+) -> Iterator[dict[str, Any]]:
+    """Run the loop, yielding progress events as they happen.
+
+    Yields {"type": "tool_start"|"tool_end", ...} per tool call and exactly one
+    final {"type": "result", ...}. Streaming exists so a student sees what the
+    copilot is doing during the seconds it spends searching, rather than an
+    undifferentiated spinner. `run_agent` below wraps this for callers that
+    just want the answer.
+    """
     model = resolve_model(llm_model)
     # The last turn is reserved for answering with tools withheld, so a cap of 1
     # would leave zero turns to actually gather anything.
@@ -426,10 +433,12 @@ def run_agent(
                 args = json.loads(call.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
+            yield {"type": "tool_start", "tool": name, "args": args}
             try:
                 result = _run_tool(name, args, ctx)
             except Exception as exc:  # a broken tool must not kill the turn
                 result = f"Tool error: {exc}"
+            yield {"type": "tool_end", "tool": name, "args": args, "chars": len(result)}
             ctx.trace.append(
                 {
                     "tool": name,
@@ -451,4 +460,24 @@ def run_agent(
     else:
         answer = content.replace("ANSWER:", "").strip()
 
-    return answer, ("" if source_quote.lower() == "none" else source_quote), ctx.passages, ctx.trace
+    yield {
+        "type": "result",
+        "answer": answer,
+        "source_quote": "" if source_quote.lower() == "none" else source_quote,
+        "passages": ctx.passages,
+        "trace": ctx.trace,
+    }
+
+
+def run_agent(**kwargs: Any) -> tuple[str, str, list[Any], list[dict[str, Any]]]:
+    """Non-streaming wrapper: (answer, source_quote, courseware_passages, trace)."""
+    result: dict[str, Any] = {}
+    for event in run_agent_events(**kwargs):
+        if event.get("type") == "result":
+            result = event
+    return (
+        result.get("answer", ""),
+        result.get("source_quote", ""),
+        result.get("passages", []),
+        result.get("trace", []),
+    )

@@ -3,9 +3,12 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
+import json
 import logging
 import time
+from typing import Iterator
 
 from server import agent, courseware
 from server.llm_service import ask_llm, courseware_char_cap
@@ -122,6 +125,45 @@ def _chat_response(
     )
 
 
+def _single_shot(
+    payload: ChatRequest, system_prompt: str | None, courseware_cap: int, usage: Usage
+) -> tuple[str, str, list]:
+    """The one-shot path: stuff context into a single call. Also the fallback
+    whenever the agent loop cannot run."""
+    additional_context = maybe_get_comparison_context(
+        question=payload.question,
+        ticker=payload.ticker,
+        year=payload.year,
+        active_form_type=payload.form_type,
+    )
+    passages: list = []
+    if courseware_cap > 0:
+        # The selection is the strongest retrieval signal the app has: a student
+        # highlighting "deferred revenue" in a 10-K should surface the textbook
+        # section on revenue recognition. Retrieval must never break chat, so a
+        # failure here degrades to a filing-only answer.
+        query = " ".join(filter(None, [payload.question, payload.selected_text or ""])).strip()
+        try:
+            passages = courseware.fit_passages(courseware.retrieve(query), courseware_cap)
+        except Exception:
+            passages = []
+
+    answer, source_quote = ask_llm(
+        question=payload.question,
+        current_context=payload.current_context,
+        additional_context=additional_context,
+        selected_text=payload.selected_text or "",
+        llm_model=payload.llm_model,
+        current_context_max_chars=payload.current_context_max_chars,
+        additional_context_max_chars=payload.additional_context_max_chars,
+        system_prompt_override=system_prompt,
+        courseware_context=courseware.format_passages(passages),
+        lens_guidance=courseware.dominant_lens_guidance(passages),
+        usage=usage,
+    )
+    return answer, source_quote, passages
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     try:
@@ -157,37 +199,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 logger.warning("Agent loop failed; falling back to single-shot.", exc_info=True)
                 single_label = "single_after_agent_fail"
 
-        additional_context = maybe_get_comparison_context(
-            question=payload.question,
-            ticker=payload.ticker,
-            year=payload.year,
-            active_form_type=payload.form_type,
-        )
-        passages = []
-        if courseware_cap > 0:
-            # The selection is the strongest retrieval signal the app has: a student
-            # highlighting "deferred revenue" in a 10-K should surface the textbook
-            # section on revenue recognition. Retrieval must never break chat, so a
-            # failure here degrades to a filing-only answer.
-            query = " ".join(filter(None, [payload.question, payload.selected_text or ""])).strip()
-            try:
-                passages = courseware.fit_passages(courseware.retrieve(query), courseware_cap)
-            except Exception:
-                passages = []
-
-        answer, source_quote = ask_llm(
-            question=payload.question,
-            current_context=payload.current_context,
-            additional_context=additional_context,
-            selected_text=payload.selected_text or "",
-            llm_model=payload.llm_model,
-            current_context_max_chars=payload.current_context_max_chars,
-            additional_context_max_chars=payload.additional_context_max_chars,
-            system_prompt_override=sp,
-            courseware_context=courseware.format_passages(passages),
-            lens_guidance=courseware.dominant_lens_guidance(passages),
-            usage=usage,
-        )
+        answer, source_quote, passages = _single_shot(payload, sp, courseware_cap, usage)
         usage.log(mode=single_label, seconds=time.monotonic() - started)
         return _chat_response(answer, source_quote, passages, mode="single", usage=usage)
     except ValueError as exc:
@@ -203,3 +215,93 @@ def chat(payload: ChatRequest) -> ChatResponse:
                 "(e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)."
             )
         raise HTTPException(status_code=500, detail=f"Failed to answer question: {msg}") from exc
+
+
+def _sse(payload: dict) -> str:
+    sep = "\n\n"  # SSE record terminator
+    return f"data: {json.dumps(payload, ensure_ascii=False)}{sep}"
+
+
+@app.post("/chat/stream")
+def chat_stream(payload: ChatRequest) -> StreamingResponse:
+    """Server-sent events: tool progress while the loop runs, then the answer.
+
+    The seconds an agent spends searching are otherwise an undifferentiated
+    spinner. Events are `tool_start` / `tool_end` / `done` / `error`.
+
+    Degrades safely. If the host buffers the response body (some serverless
+    Python runtimes do), the client still receives every event at once and
+    renders the same final answer -- no worse than POST /chat. The client also
+    falls back to /chat outright if this endpoint is unavailable.
+    """
+
+    def events() -> Iterator[str]:
+        usage = Usage()
+        started = time.monotonic()
+        single_label = "single"
+        try:
+            if agent.agent_enabled():
+                try:
+                    for event in agent.run_agent_events(
+                        question=payload.question,
+                        ticker=payload.ticker,
+                        year=payload.year,
+                        form_type=payload.form_type,
+                        filing_text=payload.current_context,
+                        selected_text=payload.selected_text or "",
+                        llm_model=payload.llm_model,
+                        system_prompt=(payload.system_prompt or "").strip() or None,
+                        courseware_max_chars=courseware_char_cap(payload.courseware_max_chars),
+                        usage=usage,
+                    ):
+                        if event.get("type") != "result":
+                            yield _sse(event)
+                            continue
+                        usage.log(
+                            mode="agent",
+                            seconds=time.monotonic() - started,
+                            tool_calls=len(event["trace"]),
+                        )
+                        response = _chat_response(
+                            event["answer"],
+                            event["source_quote"],
+                            event["passages"],
+                            mode="agent",
+                            trace=event["trace"],
+                            usage=usage,
+                        )
+                        yield _sse({"type": "done", **response.model_dump()})
+                        return
+                except Exception:
+                    logger.warning(
+                        "Agent loop failed mid-stream; falling back to single-shot.", exc_info=True
+                    )
+                    single_label = "single_after_agent_fail"
+                    yield _sse({"type": "fallback"})
+
+            sp = (payload.system_prompt or "").strip() or None
+            cap = courseware_char_cap(payload.courseware_max_chars)
+            answer, source_quote, passages = _single_shot(payload, sp, cap, usage)
+            usage.log(mode=single_label, seconds=time.monotonic() - started)
+            response = _chat_response(answer, source_quote, passages, mode="single", usage=usage)
+            yield _sse({"type": "done", **response.model_dump()})
+        except Exception as exc:
+            msg = str(exc).strip() or repr(exc)
+            if ("api key" in msg.lower()) or ("invalid" in msg.lower() and "key" in msg.lower()):
+                msg = (
+                    f"{msg} — Set the matching provider API key in Vercel "
+                    "(e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)."
+                )
+            logger.warning("chat/stream failed: %s", msg, exc_info=True)
+            yield _sse({"type": "error", "detail": f"Failed to answer question: {msg}"})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            # Ask intermediaries not to buffer; harmless where unsupported.
+            "X-Accel-Buffering": "no",
+        },
+    )
