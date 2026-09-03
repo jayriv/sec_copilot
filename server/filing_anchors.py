@@ -163,11 +163,24 @@ def _dedupe_and_sort_item_anchors(anchors: list[dict[str, Any]]) -> list[dict[st
     return non_items + merged_items
 
 
-def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str, Any]]:
+def build_filing_anchors_with_html(
+    raw_html: str, max_anchors: int = 320
+) -> tuple[list[dict[str, Any]], str]:
+    """Anchors plus the HTML they actually resolve against.
+
+    Item headings in SEC filings frequently carry no id of their own, so this
+    function synthesises one (`sec-item-...`) and assigns it to the element. That
+    assignment happens on the parsed soup, so it has to be serialised back out or
+    the ids exist only in the anchor list -- advertised to the UI, present in
+    neither the rendered DOM nor the HTML the fragment endpoint searches, and
+    therefore unresolvable. Returning the annotated HTML is what makes
+    jump-to-section work for `Item N` entries, especially under lazy loading
+    where the target is past the slice sent to the browser.
+    """
     soup = BeautifulSoup(raw_html, "html.parser")
     body = soup.body
     if body is None:
-        return []
+        return [], raw_html
 
     seen: set[str] = set()
     anchors: list[dict[str, Any]] = []
@@ -251,6 +264,7 @@ def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str
             push(frag, label_for_unknown_target(el), 3, "target")
 
     item_slug_seen: dict[str, int] = {}
+    item_ids_added = False
     for el in body.select("p, td, div, font, span"):
         if not isinstance(el, Tag):
             continue
@@ -271,11 +285,32 @@ def build_filing_anchors(raw_html: str, max_anchors: int = 320) -> list[dict[str
         new_id = f"sec-item-{base}" if prior == 0 else f"sec-item-{base}-{prior + 1}"
         if not el.get("id"):
             el["id"] = new_id
+            item_ids_added = True
         final_id = str(el.get("id") or new_id)
         push(final_id, label, 1, "item")
 
-    merged = _dedupe_and_sort_item_anchors(anchors)
-    return merged[:max_anchors]
+    merged = _dedupe_and_sort_item_anchors(anchors)[:max_anchors]
+
+    # Drop anchors whose target does not exist in the document. Filings ship
+    # table-of-contents links pointing at fragments that were never defined
+    # (MSFT's 10-K has 14, for Items 9 through 16 and Signatures); listing them
+    # gives the student dropdown entries that silently do nothing. Where the
+    # section is real, the body scan above has already registered a working
+    # `sec-item-...` anchor for it, so nothing navigable is lost.
+    defined = {str(el.get("id", "")).strip().lower() for el in soup.find_all(id=True)}
+    defined |= {
+        str(node.get("name", "")).strip().lower()
+        for node in soup.find_all("a", attrs={"name": True})
+    }
+    defined.discard("")
+    resolvable = [a for a in merged if str(a["id"]).strip().lower() in defined]
+    # Fail safe: never hand back an empty list because the check misfired.
+    if resolvable:
+        merged = resolvable
+
+    # Serialise only when the pass actually added ids; otherwise hand back the
+    # original string and skip the cost.
+    return merged, (str(soup) if item_ids_added else raw_html)
 
 
 def extract_fragment_html(raw_html: str, fragment: str, max_chars: int) -> str | None:

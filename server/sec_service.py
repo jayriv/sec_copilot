@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from time import time
 from typing import Any
 
-from server.filing_anchors import build_filing_anchors, extract_fragment_html
+from server.filing_anchors import build_filing_anchors_with_html, extract_fragment_html
 
 
 @dataclass
@@ -102,16 +102,15 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
     cached = _FILING_CACHE.get(cache_key)
     if cached and (time() - cached[0]) < _CACHE_TTL_SECONDS:
         cached_bundle = cached[1]
-        anchors = cached_bundle.anchors
-        if cached_bundle.html and anchors is None:
-            anchors = build_filing_anchors(cached_bundle.html)
+        # Anchors and the annotated HTML are built together when the bundle is
+        # first created, so a cache hit never has to rebuild either.
         return FilingBundle(
             ticker=cached_bundle.ticker,
             year=cached_bundle.year,
             form_type=cached_bundle.form_type,
             text=cached_bundle.text,
             html=cached_bundle.html,
-            anchors=anchors,
+            anchors=cached_bundle.anchors,
             cached=True,
         )
 
@@ -141,7 +140,12 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
         except Exception:
             pass
 
-    anchors = build_filing_anchors(html_content) if html_content else None
+    anchors = None
+    if html_content:
+        # Keep the annotated HTML, not the original: the anchor pass assigns
+        # synthetic ids to Item headings, and those ids have to be present in
+        # the document the browser renders and the fragment endpoint searches.
+        anchors, html_content = build_filing_anchors_with_html(html_content)
     bundle = FilingBundle(
         ticker=ticker.upper(),
         year=year,
@@ -158,8 +162,6 @@ def get_filing_text(ticker: str, year: str, form_type: str) -> FilingBundle:
 def prepare_filing_display(bundle: FilingBundle) -> tuple[str | None, bool, list[dict] | None]:
     """Slice HTML for the first response when lazy mode is on; anchors always come from the full document."""
     anchors = bundle.anchors
-    if bundle.html and anchors is None:
-        anchors = build_filing_anchors(bundle.html)
     display_html = bundle.html
     partial = False
     if bundle.html and _LAZY_HTML and len(bundle.html) > _HEAD_HTML_CHARS:
