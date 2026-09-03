@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { CSSProperties, useEffect, useState } from "react";
 import Link from "next/link";
 import { Settings, Sparkles } from "lucide-react";
 import { ChatPanel } from "@/components/ChatPanel";
@@ -283,7 +283,7 @@ export default function HomePage() {
 
   return (
     <main className="flex h-screen min-h-0 flex-col bg-gradient-to-br from-violet-50/50 via-slate-50 to-indigo-50/40">
-      <header className="z-50 flex shrink-0 items-center justify-between gap-3 border-b border-violet-100/80 bg-white/85 px-3 py-2 shadow-sm shadow-violet-950/5 backdrop-blur-md sm:px-4">
+      <header className="z-50 flex shrink-0 flex-col items-stretch gap-2 border-b sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-violet-100/80 bg-white/85 px-3 py-2 shadow-sm shadow-violet-950/5 backdrop-blur-md sm:px-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <h1 className="text-base font-semibold leading-tight text-violet-950 sm:text-lg">SEC Copilot</h1>
@@ -336,7 +336,7 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-end sm:gap-3">
+        <div className="flex shrink-0 flex-wrap items-end justify-between gap-1.5 sm:flex-nowrap sm:justify-end sm:gap-3">
           <LlmModelPicker value={chatModel} onChange={setChatModel} />
           <TickerSwitcher initial={filingKey} isLoading={isSwitchingTicker} onSwitch={onSwitchTicker} />
         </div>
@@ -360,8 +360,10 @@ export default function HomePage() {
 
       <div className="relative min-h-0 flex-1">
         <div
-          className="absolute inset-0 flex min-h-0 flex-col gap-2 p-3 transition-[padding-right] duration-300 sm:p-4"
-          style={chatDocked ? { paddingRight: `calc(${chatOverlayWidth} + 1rem)` } : {}}
+          className={`absolute inset-0 flex min-h-0 flex-col gap-2 p-3 transition-[padding-right] duration-300 sm:p-4 ${
+            chatDocked ? "sm:pr-[calc(var(--chat-w)+1rem)]" : ""
+          }`}
+          style={{ "--chat-w": chatOverlayWidth } as CSSProperties}
         >
           <div className="min-h-0 flex-1">
             <FilingReader
@@ -381,8 +383,8 @@ export default function HomePage() {
 
         {chatDocked && (
           <div
-            className="pointer-events-none absolute bottom-4 right-4 top-4 z-40 flex min-w-[280px] max-w-[calc(100vw-2rem)]"
-            style={{ width: chatOverlayWidth }}
+            className="pointer-events-none absolute inset-2 z-40 flex w-auto sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[var(--chat-w)] sm:min-w-[280px] sm:max-w-[calc(100vw-2rem)]"
+            style={{ "--chat-w": chatOverlayWidth } as CSSProperties}
           >
             <div className="pointer-events-auto flex min-h-0 flex-1 flex-col">
               <ChatPanel

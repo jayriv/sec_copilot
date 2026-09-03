@@ -32,6 +32,17 @@ function escapeHtmlText(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Every filing opens on its cover page, which is the least useful page in the
+ * document. These are the sections a student is almost always heading for, so
+ * they get a single click instead of a 35-entry dropdown.
+ */
+const QUICK_JUMPS: { label: string; match: RegExp }[] = [
+  { label: "MD&A", match: /^item\s*7\b(?!a)/i },
+  { label: "Risk factors", match: /^item\s*1a\b/i },
+  { label: "Financials", match: /^item\s*8\b/i }
+];
+
 export const FilingReader = ({
   text,
   html = "",
@@ -361,6 +372,33 @@ export const FilingReader = ({
                 ))}
               </select>
             </label>
+            {(() => {
+              const jumps = QUICK_JUMPS.map((jump) => ({
+                label: jump.label,
+                anchor: anchors.find((a) => jump.match.test(a.label.trim()))
+              })).filter((j): j is { label: string; anchor: FilingAnchor } => Boolean(j.anchor));
+              if (jumps.length === 0) return null;
+              return (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[0.65rem] font-medium uppercase tracking-wide text-violet-950/45">
+                    Jump to
+                  </span>
+                  {jumps.map((jump) => (
+                    <button
+                      key={jump.label}
+                      type="button"
+                      onClick={() => {
+                        void navigateToSection(jump.anchor);
+                      }}
+                      className="rounded-md border border-violet-200/90 bg-white px-2 py-1 text-[0.7rem] font-medium text-violet-900 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
+                      title={jump.anchor.label}
+                    >
+                      {jump.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             {sourceQuote && (
               <button
                 type="button"

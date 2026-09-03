@@ -115,7 +115,7 @@ export const ChatPanel = ({
   };
 
   return (
-    <section className="group/chat flex h-full min-h-0 flex-col rounded-2xl rounded-r-none border-l border-violet-100/90 bg-gradient-to-b from-white via-white to-violet-50/30 p-4 shadow-[0_6px_24px_-6px_rgba(54,1,63,0.22)] ring-1 ring-violet-100/70 transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_40px_-10px_rgba(54,1,63,0.3)]">
+    <section className="group/chat flex h-full min-h-0 flex-col rounded-2xl border border-violet-100/90 sm:rounded-r-none sm:border-0 sm:border-l bg-gradient-to-b from-white via-white to-violet-50/30 p-4 shadow-[0_6px_24px_-6px_rgba(54,1,63,0.22)] ring-1 ring-violet-100/70 transition duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_40px_-10px_rgba(54,1,63,0.3)]">
       <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-violet-950">
           {showSparkleBrand && <Sparkles className="h-4 w-4 text-violet-600" strokeWidth={2} aria-hidden />}
@@ -143,7 +143,7 @@ export const ChatPanel = ({
             aria-controls="copilot-context-sliders"
             id="copilot-context-toggle"
           >
-            <span>Context size (tokens)</span>
+            <span>Context size (characters)</span>
             <ChevronRight
               className={`h-4 w-4 shrink-0 text-violet-700 transition-transform ${contextOpen ? "rotate-90" : ""}`}
               aria-hidden
@@ -196,7 +196,7 @@ export const ChatPanel = ({
             )}
             <div className="whitespace-pre-wrap">{message.content}</div>
             {message.role === "assistant" && (message.trace?.length ?? 0) > 0 && (
-              <details className="mt-2 border-t border-white/15 pt-2">
+              <details open className="mt-2 border-t border-white/15 pt-2">
                 <summary className="flex cursor-pointer items-center gap-1.5 text-[0.6rem] font-semibold uppercase tracking-wide text-violet-200/80">
                   <Wrench className="h-3 w-3 shrink-0" aria-hidden />
                   {message.trace?.length} research{" "}
