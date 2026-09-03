@@ -39,6 +39,7 @@ from litellm import completion
 
 from server import courseware, filing_index
 from server.llm_service import DEFAULT_SYSTEM_PROMPT, resolve_model
+from server.usage import Usage
 
 AGENT_INSTRUCTIONS = """
 You have tools. Use them instead of guessing, and instead of assuming the
@@ -329,6 +330,7 @@ def run_agent(
     llm_model: str | None = None,
     system_prompt: str | None = None,
     courseware_max_chars: int = 12000,
+    usage: Usage | None = None,
 ) -> tuple[str, str, list[Any], list[dict[str, Any]]]:
     """Returns (answer, source_quote, courseware_passages, trace)."""
     model = resolve_model(llm_model)
@@ -383,12 +385,16 @@ def run_agent(
                 }
             )
             response = completion(model=model, messages=messages, temperature=0.1)
+            if usage is not None:
+                usage.add(response, model)
             content = response.choices[0].message.content or ""
             break
 
         response = completion(
             model=model, messages=messages, tools=tools, tool_choice="auto", temperature=0.1
         )
+        if usage is not None:
+            usage.add(response, model)
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None) or []
 

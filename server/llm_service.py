@@ -2,6 +2,8 @@ import os
 
 from litellm import completion
 
+from server.usage import Usage
+
 # Keep in sync with DEFAULT_SYSTEM_PROMPT in src/lib/defaultSystemPrompt.ts.
 DEFAULT_SYSTEM_PROMPT = (
     "You are SEC Copilot, helping a student understand and analyze financial statements. "
@@ -70,6 +72,7 @@ def ask_llm(
     system_prompt_override: str | None = None,
     courseware_context: str = "",
     lens_guidance: str = "",
+    usage: Usage | None = None,
 ) -> tuple[str, str]:
     model = resolve_model(llm_model)
 
@@ -130,6 +133,8 @@ def ask_llm(
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         temperature=0.1,
     )
+    if usage is not None:
+        usage.add(response, model)
     content = response.choices[0].message.content or ""
     answer = content
     source_quote = ""

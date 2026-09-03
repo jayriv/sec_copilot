@@ -60,6 +60,18 @@ class FilingFragmentResponse(BaseModel):
     html: str
 
 
+class UsageInfo(BaseModel):
+    """Token and cost accounting for one question, summed over every model call."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    """None when litellm has no price for the model used."""
+    cost_usd: float | None = None
+
+
 class AgentStep(BaseModel):
     """One tool call the agent made, for the UI's reasoning trail."""
 
@@ -80,3 +92,5 @@ class ChatResponse(BaseModel):
     mode: Literal["agent", "single"] = "single"
     """Tool calls made, in order. Empty in single-shot mode."""
     trace: list[AgentStep] = []
+    """Tokens and cost for this question. cache_* stay 0 until caching is added."""
+    usage: UsageInfo | None = None

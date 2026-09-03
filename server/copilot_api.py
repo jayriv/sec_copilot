@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 import logging
+import time
 
 from server import agent, courseware
 from server.llm_service import ask_llm, courseware_char_cap
@@ -16,8 +17,13 @@ from server.models import (
     FilingAnchorModel,
     FilingFragmentResponse,
     FilingResponse,
+    UsageInfo,
 )
+from server.usage import Usage
 
+# No-op when the host (uvicorn on Vercel) has already configured handlers;
+# ensures the usage line is emitted when nothing else has set a level.
+logging.basicConfig(level=os.getenv("COPILOT_LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 from server.path_normalize import NormalizeApiPathMiddleware
 from server.sec_service import get_filing_fragment_html, get_filing_text, maybe_get_comparison_context, prepare_filing_display
@@ -93,6 +99,7 @@ def _chat_response(
     *,
     mode: str,
     trace: list[dict] | None = None,
+    usage: Usage | None = None,
 ) -> ChatResponse:
     return ChatResponse(
         answer=answer,
@@ -111,6 +118,7 @@ def _chat_response(
         lenses=[label for _, label in courseware.dominant_lenses(passages)],
         mode=mode,  # type: ignore[arg-type]
         trace=[AgentStep(**step) for step in (trace or [])],
+        usage=UsageInfo(**usage.as_dict()) if usage is not None else None,  # type: ignore[arg-type]
     )
 
 
@@ -119,6 +127,11 @@ def chat(payload: ChatRequest) -> ChatResponse:
     try:
         sp = (payload.system_prompt or "").strip() or None
         courseware_cap = courseware_char_cap(payload.courseware_max_chars)
+        usage = Usage()
+        started = time.monotonic()
+        # Agent calls that ran before a fallback were still billed, so the tally
+        # keeps them; the label records that the answer came from single-shot.
+        single_label = "single"
 
         if agent.agent_enabled():
             try:
@@ -132,12 +145,17 @@ def chat(payload: ChatRequest) -> ChatResponse:
                     llm_model=payload.llm_model,
                     system_prompt=sp,
                     courseware_max_chars=courseware_cap,
+                    usage=usage,
                 )
-                return _chat_response(answer, source_quote, passages, mode="agent", trace=trace)
+                usage.log(mode="agent", seconds=time.monotonic() - started, tool_calls=len(trace))
+                return _chat_response(
+                    answer, source_quote, passages, mode="agent", trace=trace, usage=usage
+                )
             except Exception:
                 # A model without tool support, a provider hiccup, or a bad tool
                 # loop must not cost the student an answer. Fall through.
                 logger.warning("Agent loop failed; falling back to single-shot.", exc_info=True)
+                single_label = "single_after_agent_fail"
 
         additional_context = maybe_get_comparison_context(
             question=payload.question,
@@ -168,8 +186,10 @@ def chat(payload: ChatRequest) -> ChatResponse:
             system_prompt_override=sp,
             courseware_context=courseware.format_passages(passages),
             lens_guidance=courseware.dominant_lens_guidance(passages),
+            usage=usage,
         )
-        return _chat_response(answer, source_quote, passages, mode="single")
+        usage.log(mode=single_label, seconds=time.monotonic() - started)
+        return _chat_response(answer, source_quote, passages, mode="single", usage=usage)
     except ValueError as exc:
         msg = str(exc).strip() or repr(exc)
         if "COPILOT_ALLOW_CLIENT_SYSTEM_PROMPT" in msg:
